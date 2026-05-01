@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Required so the host app can decode bitmaps from the photo picker URI. -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+</manifest>
