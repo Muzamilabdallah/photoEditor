@@ -3,7 +3,6 @@ package com.muzamil.photoeditor.ui
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.muzamil.photoeditor.viewmodel.PhotoEditorViewModel
 
@@ -12,7 +11,6 @@ fun MyEditorScreen(viewModel: PhotoEditorViewModel, onPickImage: () -> Unit) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val canUndo by viewModel.canUndo.collectAsStateWithLifecycle()
     val canRedo by viewModel.canRedo.collectAsStateWithLifecycle()
-    val textMeasurer = rememberTextMeasurer()
     val context = LocalContext.current
     PhotoEditorScreen(
         bitmap = state.backgroundBitmap,
@@ -21,6 +19,7 @@ fun MyEditorScreen(viewModel: PhotoEditorViewModel, onPickImage: () -> Unit) {
         canRedo = canRedo,
         onToolSelected = viewModel::selectTool,
         onAddText = viewModel::addText,
+        onAddEmoji = viewModel::addEmoji,
         onAddShape = viewModel::addShape,
         onStartDrawing = viewModel::startDrawing,
         onContinueDrawing = viewModel::continueDrawing,
@@ -35,9 +34,23 @@ fun MyEditorScreen(viewModel: PhotoEditorViewModel, onPickImage: () -> Unit) {
         onClearAll = viewModel::clearAll,
         onPickImage = onPickImage,
         onSaveImage = {
-            viewModel.saveEditedImage(textMeasurer, context = context)
+            viewModel.saveEditedImage(context = context)
         },
-        onScaleFactorChanged = viewModel::setPreviewScaleFactor
+        onScaleFactorChanged = viewModel::setPreviewScaleFactor,
+        onUpdateTextDefault = { color, size -> viewModel.updateTextStyle(color, size) },
+        onUpdateDrawingDefault = { color, stroke -> viewModel.updateDrawingStyle(color, stroke) },
+        onUpdateShapeDefault = { color, stroke, filled ->
+            viewModel.updateShapeStyle(color, stroke, filled)
+        },
+        onUpdateSelectedTextStyle = { color, size ->
+            viewModel.updateSelectedTextStyle(color, size)
+        },
+        onUpdateSelectedEmojiSize = viewModel::updateSelectedEmojiSize,
+        onUpdateSelectedDrawingStyle = { color, stroke ->
+            viewModel.updateSelectedDrawingStyle(color, stroke)
+        },
+        onUpdateSelectedShapeStyle = { color, stroke, filled ->
+            viewModel.updateSelectedShapeStyle(color, stroke, filled)
+        }
     )
 }
-

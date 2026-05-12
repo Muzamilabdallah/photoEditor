@@ -8,7 +8,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalDensity
@@ -44,7 +47,11 @@ internal fun ShapeElementContent(
         Canvas(modifier = Modifier.size(widthDp, heightDp)) {
             val w = size.width
             val h = size.height
-            val drawStyle = if (element.filled) Fill else Stroke(width = previewStrokeWidth)
+            val drawStyle = if (element.filled) Fill else Stroke(
+                width = previewStrokeWidth,
+                cap = StrokeCap.Round,
+                join = StrokeJoin.Round
+            )
             when (element.kind) {
                 ShapeKind.Rectangle -> drawRect(
                     color = element.color,
@@ -65,6 +72,26 @@ internal fun ShapeElementContent(
                     strokeWidth = previewStrokeWidth,
                     cap = StrokeCap.Round
                 )
+                ShapeKind.Triangle -> drawShapePath(
+                    path = trianglePath(w, h),
+                    color = element.color,
+                    style = drawStyle
+                )
+                ShapeKind.Star -> drawShapePath(
+                    path = starPath(w, h),
+                    color = element.color,
+                    style = drawStyle
+                )
+                ShapeKind.Arrow -> drawShapePath(
+                    path = arrowPath(w, h),
+                    color = element.color,
+                    style = drawStyle
+                )
+                ShapeKind.Heart -> drawShapePath(
+                    path = heartPath(w, h),
+                    color = element.color,
+                    style = drawStyle
+                )
             }
 
             if (isSelected) {
@@ -77,4 +104,12 @@ internal fun ShapeElementContent(
             }
         }
     }
+}
+
+private fun DrawScope.drawShapePath(
+    path: Path,
+    color: Color,
+    style: androidx.compose.ui.graphics.drawscope.DrawStyle
+) {
+    drawPath(path = path, color = color, style = style)
 }

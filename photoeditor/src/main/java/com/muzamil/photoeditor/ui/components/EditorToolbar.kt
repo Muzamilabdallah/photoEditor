@@ -1,5 +1,7 @@
 package com.muzamil.photoeditor.ui.components
 
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -9,13 +11,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Create
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Face
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
@@ -27,7 +28,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -39,6 +39,7 @@ import com.muzamil.photoeditor.domain.ShapeKind
 internal fun EditorToolbar(
     currentTool: EditorTool,
     onToolSelected: (EditorTool) -> Unit,
+    onEmojiClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Surface(
@@ -50,8 +51,9 @@ internal fun EditorToolbar(
             modifier = Modifier
                 .fillMaxWidth()
                 .horizontalScroll(rememberScrollState())
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
             ToolButton(
                 icon = Icons.Default.Check,
@@ -66,31 +68,37 @@ internal fun EditorToolbar(
                 onClick = { onToolSelected(EditorTool.Text) }
             )
             ToolButton(
+                icon = Icons.Default.Face,
+                label = "Emoji",
+                isSelected = false,
+                onClick = onEmojiClick
+            )
+            ToolButton(
                 icon = Icons.Default.Create,
                 label = "Draw",
                 isSelected = currentTool == EditorTool.Drawing,
                 onClick = { onToolSelected(EditorTool.Drawing) }
             )
-            ShapeToolButton(
-                kind = ShapeKind.Rectangle,
-                label = "Rect",
-                isSelected = currentTool == EditorTool.Shape(ShapeKind.Rectangle),
-                onClick = { onToolSelected(EditorTool.Shape(ShapeKind.Rectangle)) }
-            )
-            ShapeToolButton(
-                kind = ShapeKind.Circle,
-                label = "Circle",
-                isSelected = currentTool == EditorTool.Shape(ShapeKind.Circle),
-                onClick = { onToolSelected(EditorTool.Shape(ShapeKind.Circle)) }
-            )
-            ShapeToolButton(
-                kind = ShapeKind.Line,
-                label = "Line",
-                isSelected = currentTool == EditorTool.Shape(ShapeKind.Line),
-                onClick = { onToolSelected(EditorTool.Shape(ShapeKind.Line)) }
-            )
+            ShapeKind.values().forEach { kind ->
+                ShapeToolButton(
+                    kind = kind,
+                    label = kind.label(),
+                    isSelected = currentTool == EditorTool.Shape(kind),
+                    onClick = { onToolSelected(EditorTool.Shape(kind)) }
+                )
+            }
         }
     }
+}
+
+private fun ShapeKind.label(): String = when (this) {
+    ShapeKind.Rectangle -> "Rect"
+    ShapeKind.Circle -> "Circle"
+    ShapeKind.Line -> "Line"
+    ShapeKind.Triangle -> "Tri"
+    ShapeKind.Star -> "Star"
+    ShapeKind.Arrow -> "Arrow"
+    ShapeKind.Heart -> "Heart"
 }
 
 @Composable
@@ -102,7 +110,7 @@ private fun ToolButton(
 ) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.width(80.dp)
+        modifier = Modifier.width(72.dp)
     ) {
         FilledIconButton(
             onClick = onClick,
@@ -146,7 +154,7 @@ private fun ShapeToolButton(
 
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.width(80.dp)
+        modifier = Modifier.width(72.dp)
     ) {
         FilledIconButton(
             onClick = onClick,
@@ -180,6 +188,26 @@ private fun ShapeToolButton(
                         end = Offset(w, h / 2f),
                         strokeWidth = 3f,
                         cap = StrokeCap.Round
+                    )
+                    ShapeKind.Triangle -> drawPath(
+                        path = trianglePath(w, h),
+                        color = tint,
+                        style = stroke
+                    )
+                    ShapeKind.Star -> drawPath(
+                        path = starPath(w, h),
+                        color = tint,
+                        style = stroke
+                    )
+                    ShapeKind.Arrow -> drawPath(
+                        path = arrowPath(w, h),
+                        color = tint,
+                        style = stroke
+                    )
+                    ShapeKind.Heart -> drawPath(
+                        path = heartPath(w, h),
+                        color = tint,
+                        style = stroke
                     )
                 }
             }

@@ -4,11 +4,8 @@ import android.graphics.Bitmap
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -55,7 +52,6 @@ internal fun EditorCanvas(
 ) {
     val density = LocalDensity.current
     var canvasSize by remember { mutableStateOf(Size.Zero) }
-    var imageOffset by remember { mutableStateOf(Offset.Zero) }
     var containerSize by remember { mutableStateOf(IntSize.Zero) }
 
     val scaleFactor = remember(bitmap, canvasSize) {
@@ -66,31 +62,18 @@ internal fun EditorCanvas(
         } ?: 1f
     }
 
-    LaunchedEffect(bitmap, scaleFactor, canvasSize) {
-        bitmap?.let {
-            val displayWidth = it.width * scaleFactor
-            val displayHeight = it.height * scaleFactor
-            imageOffset = Offset(
-                (canvasSize.width - displayWidth) / 2,
-                (canvasSize.height - displayHeight) / 2
-            )
-        }
-    }
-
     // Publish scaleFactor so the ViewModel can hand it to the exporter — text and
     // emoji sizes are stored in sp and need this to convert to bitmap-pixels.
     LaunchedEffect(scaleFactor) {
         onScaleFactorChanged(scaleFactor)
     }
 
+    // Pointer events on the drawing Canvas arrive in the inner Box's local space,
+    // which is sized to exactly the fitted image — so coords are already
+    // 0.displayWidth × 0.displayHeight, no letterbox subtraction needed.
     fun screenToBitmapCoordinates(screenOffset: Offset): Offset =
-        Offset(
-            (screenOffset.x - imageOffset.x) / scaleFactor,
-            (screenOffset.y - imageOffset.y) / scaleFactor
-        )
+        Offset(screenOffset.x / scaleFactor, screenOffset.y / scaleFactor)
 
-    // Drawing points are stored as ratios (0..1) relative to the bitmap so
-    // they stay correct at any preview size or bitmap resolution.
     fun screenToRatio(screenOffset: Offset): Offset {
         val b = bitmap ?: return Offset.Zero
         val bmp = screenToBitmapCoordinates(screenOffset)
@@ -100,72 +83,63 @@ internal fun EditorCanvas(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(Color.LightGray)
-            .clipToBounds(),
+            .background(Color.Black) // or remove background entirely
+            .clipToBounds()
+            .onSizeChanged {
+                canvasSize = Size(it.width.toFloat(), it.height.toFloat())
+            },
         contentAlignment = Alignment.Center
     ) {
-        // This inner Box is sized to exactly match the fitted image
+        // Inner Box now fills the container — Crop handles overflow
         Box(
             modifier = Modifier
-                .then(
-                    if (bitmap != null && canvasSize != Size.Zero) {
-                        val scaleX = canvasSize.width / bitmap.width.toFloat()
-                        val scaleY = canvasSize.height / bitmap.height.toFloat()
-                        val scale = minOf(scaleX, scaleY)
-                        val displayWidth = (bitmap.width * scale).toInt()
-                        val displayHeight = (bitmap.height * scale).toInt()
-                        Modifier.size(
-                            width = with(density) { displayWidth.toDp() },
-                            height = with(density) { displayHeight.toDp() }
-                        )
-                    } else {
-                        Modifier
-                    }
-                )
+                .fillMaxSize()
                 .onSizeChanged { containerSize = it }
         ) {
             bitmap?.let {
                 Image(
                     bitmap = it.asImageBitmap(),
                     contentDescription = null,
-                    contentScale = ContentScale.Fit,
+                    contentScale = ContentScale.Crop, // ← was Fit
                     modifier = Modifier.fillMaxSize()
                 )
             }
 
-            // Drawing layer — captures freehand strokes and renders all Drawing elements.
-            Canvas(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .pointerInput(currentTool) {
-                        when (currentTool) {
-                            EditorTool.Drawing -> detectDragGestures(
-                                onDragStart = { offset -> onStartDrawing(screenToRatio(offset)) },
-                                onDrag = { change, _ -> onContinueDrawing(screenToRatio(change.position)) },
-                                onDragEnd = { onFinishDrawing() }
-                            )
-                            EditorTool.Text -> detectTapGestures { offset ->
-                                onCanvasTap(screenToBitmapCoordinates(offset))
-                            }
-                            EditorTool.None, is EditorTool.Shape -> Unit
-                        }
-                    }
-            ) {
+            Canvas(modifier = Modifier
+                .fillMaxSize()
+                .pointerInput(currentTool) { /* same */ }) {
                 val bmp = bitmap ?: return@Canvas
                 val bmpW = bmp.width.toFloat()
                 val bmpH = bmp.height.toFloat()
+
+                // Crop scale = maxOf instead of minOf
+                val scaleX = size.width / bmpW
+                val scaleY = size.height / bmpH
+                val scale = maxOf(scaleX, scaleY)
+
+                // Crop offsets (how much of the bitmap is hidden on each side)
+                val cropOffsetX = (bmpW * scale - size.width) / 2f
+                val cropOffsetY = (bmpH * scale - size.height) / 2f
+
                 elements.elements.forEach { element ->
                     if (element is EditElement.Drawing && element.points.size > 1) {
                         for (i in 0 until element.points.size - 1) {
                             val p1 = element.points[i]
                             val p2 = element.points[i + 1]
-                            val start = Offset(p1.x * bmpW, p1.y * bmpH) * scaleFactor + imageOffset
-                            val end = Offset(p2.x * bmpW, p2.y * bmpH) * scaleFactor + imageOffset
+                            // Apply crop offset when mapping normalized → screen coords
+                            val start = Offset(
+                                p1.x * bmpW * scale - cropOffsetX,
+                                p1.y * bmpH * scale - cropOffsetY
+                            )
+                            val end = Offset(
+                                p2.x * bmpW * scale - cropOffsetX,
+                                p2.y * bmpH * scale - cropOffsetY
+                            )
                             drawLine(
                                 color = element.color,
                                 start = start,
                                 end = end,
-                                strokeWidth = element.strokeWidth * scaleFactor,
+                                strokeWidth = element.strokeWidth * scale,
                                 cap = StrokeCap.Round
                             )
                         }

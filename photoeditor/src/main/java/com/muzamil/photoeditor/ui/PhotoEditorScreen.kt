@@ -38,12 +38,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
+import com.muzamil.photoeditor.domain.EditElement
 import com.muzamil.photoeditor.domain.EditorState
 import com.muzamil.photoeditor.domain.EditorTool
 import com.muzamil.photoeditor.domain.ShapeKind
 import com.muzamil.photoeditor.ui.components.EditorCanvas
+import com.muzamil.photoeditor.ui.components.EditorStylePanel
 import com.muzamil.photoeditor.ui.components.EditorToolbar
+import com.muzamil.photoeditor.ui.components.EmojiPickerDialog
+import com.muzamil.photoeditor.ui.components.StyleContext
 import com.muzamil.photoeditor.ui.components.TextInputDialog
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -57,6 +62,7 @@ internal fun PhotoEditorScreen(
     onSaveImage: () -> Unit,
     onToolSelected: (EditorTool) -> Unit,
     onAddText: (String, Offset) -> Unit,
+    onAddEmoji: (String) -> Unit,
     onAddShape: (ShapeKind) -> Unit,
     onStartDrawing: (Offset) -> Unit,
     onContinueDrawing: (Offset) -> Unit,
@@ -68,10 +74,28 @@ internal fun PhotoEditorScreen(
     onRedo: () -> Unit,
     onClearAll: () -> Unit,
     onScaleFactorChanged: (Float) -> Unit,
+    onUpdateTextDefault: (Color?, TextUnit?) -> Unit,
+    onUpdateDrawingDefault: (Color?, Float?) -> Unit,
+    onUpdateShapeDefault: (Color?, Float?, Boolean?) -> Unit,
+    onUpdateSelectedTextStyle: (Color?, TextUnit?) -> Unit,
+    onUpdateSelectedEmojiSize: (TextUnit) -> Unit,
+    onUpdateSelectedDrawingStyle: (Color?, Float?) -> Unit,
+    onUpdateSelectedShapeStyle: (Color?, Float?, Boolean?) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var showTextDialog by remember { mutableStateOf(false) }
-    var textDialogPosition by remember { mutableStateOf(Offset.Zero) }
+    var showEmojiPicker by remember { mutableStateOf(false) }
+    val textDialogPosition by remember { mutableStateOf(Offset.Zero) }
+
+    val styleContext = remember(editorState) { editorState.toStyleContext(
+        onUpdateTextDefault = onUpdateTextDefault,
+        onUpdateDrawingDefault = onUpdateDrawingDefault,
+        onUpdateShapeDefault = onUpdateShapeDefault,
+        onUpdateSelectedTextStyle = onUpdateSelectedTextStyle,
+        onUpdateSelectedEmojiSize = onUpdateSelectedEmojiSize,
+        onUpdateSelectedDrawingStyle = onUpdateSelectedDrawingStyle,
+        onUpdateSelectedShapeStyle = onUpdateSelectedShapeStyle
+    ) }
 
     Scaffold(
         topBar = {
@@ -90,17 +114,21 @@ internal fun PhotoEditorScreen(
             )
         },
         bottomBar = {
-            EditorToolbar(
-                currentTool = editorState.currentTool,
-                onToolSelected = { tool ->
-                    when (tool) {
-                        EditorTool.Text -> showTextDialog = true
-                        is EditorTool.Shape -> onAddShape(tool.kind)
-                        else -> Unit
-                    }
-                    onToolSelected(tool)
-                }
-            )
+            Column {
+                styleContext?.let { ctx -> EditorStylePanel(context = ctx) }
+                EditorToolbar(
+                    currentTool = editorState.currentTool,
+                    onToolSelected = { tool ->
+                        when (tool) {
+                            EditorTool.Text -> showTextDialog = true
+                            is EditorTool.Shape -> onAddShape(tool.kind)
+                            else -> Unit
+                        }
+                        onToolSelected(tool)
+                    },
+                    onEmojiClick = { showEmojiPicker = true }
+                )
+            }
         }
     ) { paddingValues ->
         Box(
@@ -156,6 +184,75 @@ internal fun PhotoEditorScreen(
                 showTextDialog = false
             }
         )
+    }
+
+    if (showEmojiPicker) {
+        EmojiPickerDialog(
+            onDismiss = { showEmojiPicker = false },
+            onPick = { emoji ->
+                onAddEmoji(emoji)
+                showEmojiPicker = false
+            }
+        )
+    }
+}
+
+private fun EditorState.toStyleContext(
+    onUpdateTextDefault: (Color?, TextUnit?) -> Unit,
+    onUpdateDrawingDefault: (Color?, Float?) -> Unit,
+    onUpdateShapeDefault: (Color?, Float?, Boolean?) -> Unit,
+    onUpdateSelectedTextStyle: (Color?, TextUnit?) -> Unit,
+    onUpdateSelectedEmojiSize: (TextUnit) -> Unit,
+    onUpdateSelectedDrawingStyle: (Color?, Float?) -> Unit,
+    onUpdateSelectedShapeStyle: (Color?, Float?, Boolean?) -> Unit
+): StyleContext? {
+    val selected = selectedElementId?.let { id -> elements.firstOrNull { it.id == id } }
+    return when {
+        selected is EditElement.Text -> StyleContext.TextStyle(
+            color = selected.color,
+            fontSize = selected.fontSize,
+            onColor = { onUpdateSelectedTextStyle(it, null) },
+            onFontSize = { onUpdateSelectedTextStyle(null, it) }
+        )
+        selected is EditElement.Emoji -> StyleContext.EmojiStyle(
+            size = selected.size,
+            onSize = onUpdateSelectedEmojiSize
+        )
+        selected is EditElement.Drawing -> StyleContext.DrawingStyle(
+            color = selected.color,
+            strokeWidth = selected.strokeWidth,
+            onColor = { onUpdateSelectedDrawingStyle(it, null) },
+            onStroke = { onUpdateSelectedDrawingStyle(null, it) }
+        )
+        selected is EditElement.Shape -> StyleContext.ShapeStyle(
+            color = selected.color,
+            strokeWidth = selected.strokeWidth,
+            filled = selected.filled,
+            onColor = { onUpdateSelectedShapeStyle(it, null, null) },
+            onStroke = { onUpdateSelectedShapeStyle(null, it, null) },
+            onFilled = { onUpdateSelectedShapeStyle(null, null, it) }
+        )
+        currentTool == EditorTool.Text -> StyleContext.TextStyle(
+            color = textColor,
+            fontSize = textSize,
+            onColor = { onUpdateTextDefault(it, null) },
+            onFontSize = { onUpdateTextDefault(null, it) }
+        )
+        currentTool == EditorTool.Drawing -> StyleContext.DrawingStyle(
+            color = drawingColor,
+            strokeWidth = drawingStrokeWidth,
+            onColor = { onUpdateDrawingDefault(it, null) },
+            onStroke = { onUpdateDrawingDefault(null, it) }
+        )
+        currentTool is EditorTool.Shape -> StyleContext.ShapeStyle(
+            color = shapeColor,
+            strokeWidth = shapeStrokeWidth,
+            filled = shapeFilled,
+            onColor = { onUpdateShapeDefault(it, null, null) },
+            onStroke = { onUpdateShapeDefault(null, it, null) },
+            onFilled = { onUpdateShapeDefault(null, null, it) }
+        )
+        else -> null
     }
 }
 
@@ -254,3 +351,4 @@ private fun EmptyState(onPickImage: () -> Unit) {
         }
     }
 }
+

@@ -84,7 +84,7 @@ sealed class EditElement {
     ) : EditElement()
 }
 
-enum class ShapeKind { Rectangle, Circle, Line }
+enum class ShapeKind { Rectangle, Circle, Line, Triangle, Star, Arrow, Heart }
 
 data class EditorState(
     val elements: List<EditElement> = emptyList(),

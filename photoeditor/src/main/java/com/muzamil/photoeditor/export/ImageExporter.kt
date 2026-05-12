@@ -5,12 +5,12 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.Typeface
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import android.util.TypedValue
-import androidx.annotation.RequiresApi
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.font.FontWeight
 import androidx.core.graphics.withSave
@@ -21,8 +21,11 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 import java.io.OutputStream
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.min
+import kotlin.math.sin
 
-@RequiresApi(Build.VERSION_CODES.O)
 suspend fun Context.saveEditedImage(
     backgroundBitmap: Bitmap,
     elements: List<EditElement>,
@@ -131,7 +134,6 @@ suspend fun Context.saveEditedImage(
                         isAntiAlias = true
                     }
 
-                    // Points are ratios (0..1); multiply by bitmap dimensions.
                     for (i in 0 until element.points.size - 1) {
                         val start = element.points[i]
                         val end = element.points[i + 1]
@@ -170,6 +172,10 @@ suspend fun Context.saveEditedImage(
                             ShapeKind.Rectangle -> drawRect(-halfW, -halfH, halfW, halfH, paint)
                             ShapeKind.Circle -> drawOval(-halfW, -halfH, halfW, halfH, paint)
                             ShapeKind.Line -> drawLine(-halfW, 0f, halfW, 0f, paint)
+                            ShapeKind.Triangle -> drawPath(triangleExportPath(halfW, halfH), paint)
+                            ShapeKind.Star -> drawPath(starExportPath(halfW, halfH), paint)
+                            ShapeKind.Arrow -> drawPath(arrowExportPath(halfW, halfH), paint)
+                            ShapeKind.Heart -> drawPath(heartExportPath(halfW, halfH), paint)
                         }
                     }
                 }
@@ -217,4 +223,47 @@ suspend fun Context.saveEditedImage(
     } catch (e: Exception) {
         Result.failure(e)
     }
+}
+
+private fun triangleExportPath(halfW: Float, halfH: Float): Path = Path().apply {
+    moveTo(0f, -halfH)
+    lineTo(halfW, halfH)
+    lineTo(-halfW, halfH)
+    close()
+}
+
+private fun starExportPath(halfW: Float, halfH: Float, points: Int = 5): Path = Path().apply {
+    val outer = min(halfW, halfH)
+    val inner = outer * 0.4f
+    val step = (PI / points).toFloat()
+    var angle = -PI.toFloat() / 2f
+    for (i in 0 until points * 2) {
+        val r = if (i % 2 == 0) outer else inner
+        val x = r * cos(angle)
+        val y = r * sin(angle)
+        if (i == 0) moveTo(x, y) else lineTo(x, y)
+        angle += step
+    }
+    close()
+}
+
+private fun arrowExportPath(halfW: Float, halfH: Float): Path = Path().apply {
+    val bodyTop = -halfH * 0.3f
+    val bodyBottom = halfH * 0.3f
+    val headStart = halfW * 0.3f
+    moveTo(-halfW, bodyTop)
+    lineTo(headStart, bodyTop)
+    lineTo(headStart, -halfH * 0.7f)
+    lineTo(halfW, 0f)
+    lineTo(headStart, halfH * 0.7f)
+    lineTo(headStart, bodyBottom)
+    lineTo(-halfW, bodyBottom)
+    close()
+}
+
+private fun heartExportPath(halfW: Float, halfH: Float): Path = Path().apply {
+    moveTo(0f, -halfH * 0.5f)
+    cubicTo(-halfW, -1.2f * halfH, -1.2f * halfW, 0.1f * halfH, 0f, halfH)
+    cubicTo(1.2f * halfW, 0.1f * halfH, halfW, -1.2f * halfH, 0f, -halfH * 0.5f)
+    close()
 }

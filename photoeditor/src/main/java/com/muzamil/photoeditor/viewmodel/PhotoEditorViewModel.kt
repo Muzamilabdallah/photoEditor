@@ -2,9 +2,7 @@ package com.muzamil.photoeditor.viewmodel
 
 import android.content.Context
 import android.graphics.Bitmap
-import android.os.Build
 import android.util.Log
-import androidx.annotation.RequiresApi
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -165,6 +163,54 @@ class PhotoEditorViewModel : ViewModel() {
                 textColor = color ?: it.textColor,
                 textSize = size ?: it.textSize
             )
+        }
+    }
+
+    fun updateSelectedTextStyle(color: Color? = null, fontSize: TextUnit? = null) {
+        val id = _state.value.selectedElementId ?: return
+        updateElement(id) { element ->
+            if (element is EditElement.Text) {
+                element.copy(
+                    color = color ?: element.color,
+                    fontSize = fontSize ?: element.fontSize
+                )
+            } else element
+        }
+    }
+
+    fun updateSelectedEmojiSize(size: TextUnit) {
+        val id = _state.value.selectedElementId ?: return
+        updateElement(id) { element ->
+            if (element is EditElement.Emoji) element.copy(size = size) else element
+        }
+    }
+
+    fun updateSelectedDrawingStyle(color: Color? = null, strokeWidth: Float? = null) {
+        val id = _state.value.selectedElementId ?: return
+        updateElement(id) { element ->
+            if (element is EditElement.Drawing) {
+                element.copy(
+                    color = color ?: element.color,
+                    strokeWidth = strokeWidth ?: element.strokeWidth
+                )
+            } else element
+        }
+    }
+
+    fun updateSelectedShapeStyle(
+        color: Color? = null,
+        strokeWidth: Float? = null,
+        filled: Boolean? = null
+    ) {
+        val id = _state.value.selectedElementId ?: return
+        updateElement(id) { element ->
+            if (element is EditElement.Shape) {
+                element.copy(
+                    color = color ?: element.color,
+                    strokeWidth = strokeWidth ?: element.strokeWidth,
+                    filled = filled ?: element.filled
+                )
+            } else element
         }
     }
 
@@ -339,7 +385,6 @@ class PhotoEditorViewModel : ViewModel() {
         }
     }
 
-    @RequiresApi(Build.VERSION_CODES.O)
     fun saveEditedImage(
         context: Context,
         quality: Int = 95,
