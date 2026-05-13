@@ -33,9 +33,12 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -69,6 +72,8 @@ internal fun PhotoEditorScreen(
     editorState: EditorState,
     canUndo: Boolean,
     canRedo: Boolean,
+    saveSuccess: String?,
+    onSaveSuccessShown: () -> Unit,
     onPickImage: () -> Unit,
     onSaveImage: () -> Unit,
     onContainerSizeChanged: (IntSize) -> Unit,
@@ -99,6 +104,14 @@ internal fun PhotoEditorScreen(
     var showTextDialog by remember { mutableStateOf(false) }
     var showEmojiPicker by remember { mutableStateOf(false) }
     val textDialogPosition by remember { mutableStateOf(Offset(0.5f, 0.5f)) }
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    LaunchedEffect(saveSuccess) {
+        if (saveSuccess != null) {
+            snackbarHostState.showSnackbar("Image saved")
+            onSaveSuccessShown()
+        }
+    }
 
     val styleContext = remember(editorState) {
         editorState.toStyleContext(
@@ -124,6 +137,7 @@ internal fun PhotoEditorScreen(
     val showShapeSheet = editorState.currentTool is EditorTool.Shape
 
     Scaffold(
+        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         topBar = {
             EditorTopBar(
                 hasBitmap = bitmap != null,

@@ -11,12 +11,15 @@ fun MyEditorScreen(viewModel: PhotoEditorViewModel, onPickImage: () -> Unit) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val canUndo by viewModel.canUndo.collectAsStateWithLifecycle()
     val canRedo by viewModel.canRedo.collectAsStateWithLifecycle()
+    val saveSuccess by viewModel.saveSuccess.collectAsStateWithLifecycle()
     val context = LocalContext.current
     PhotoEditorScreen(
         bitmap = state.backgroundBitmap,
         editorState = state,
         canUndo = canUndo,
         canRedo = canRedo,
+        saveSuccess = saveSuccess,
+        onSaveSuccessShown = viewModel::clearSaveSuccess,
         onToolSelected = viewModel::selectTool,
         onAddText = viewModel::addText,
         onAddEmoji = viewModel::addEmoji,

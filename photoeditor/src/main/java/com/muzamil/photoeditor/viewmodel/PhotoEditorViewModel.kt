@@ -358,6 +358,10 @@ class PhotoEditorViewModel : ViewModel() {
         }
     }
 
+    fun clearSaveSuccess() {
+        _saveSuccess.value = null
+    }
+
     // ── Lifecycle ─────────────────────────────────────────────────────────────
 
     override fun onCleared() {
