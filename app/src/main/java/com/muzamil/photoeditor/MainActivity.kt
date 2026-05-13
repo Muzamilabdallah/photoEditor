@@ -53,7 +53,6 @@ class MainActivity : ComponentActivity() {
                     ) {
 
                             MyEditorScreen(viewModel = viewModel){
-
                                 pickMedia.launch(
                                     PickVisualMediaRequest(
                                         //Here we request only photos. Change this to .ImageAndVideo if

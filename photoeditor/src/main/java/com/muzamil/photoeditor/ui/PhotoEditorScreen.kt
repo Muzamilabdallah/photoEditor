@@ -1,7 +1,13 @@
 package com.muzamil.photoeditor.ui
 
 import android.graphics.Bitmap
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -37,7 +43,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import com.muzamil.photoeditor.domain.EditElement
@@ -48,8 +56,11 @@ import com.muzamil.photoeditor.ui.components.EditorCanvas
 import com.muzamil.photoeditor.ui.components.EditorStylePanel
 import com.muzamil.photoeditor.ui.components.EditorToolbar
 import com.muzamil.photoeditor.ui.components.EmojiPickerDialog
+import com.muzamil.photoeditor.ui.components.ShapeSheet
 import com.muzamil.photoeditor.ui.components.StyleContext
 import com.muzamil.photoeditor.ui.components.TextInputDialog
+
+private val ToolbarHeight = 72.dp
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -60,6 +71,7 @@ internal fun PhotoEditorScreen(
     canRedo: Boolean,
     onPickImage: () -> Unit,
     onSaveImage: () -> Unit,
+    onContainerSizeChanged: (IntSize) -> Unit,
     onToolSelected: (EditorTool) -> Unit,
     onAddText: (String, Offset) -> Unit,
     onAddEmoji: (String) -> Unit,
@@ -68,12 +80,13 @@ internal fun PhotoEditorScreen(
     onContinueDrawing: (Offset) -> Unit,
     onFinishDrawing: () -> Unit,
     onElementSelected: (String) -> Unit,
+    onDeselect: () -> Unit,
     onUpdateElement: (String, Float, Float, Float, Float) -> Unit,
     onDeleteSelected: () -> Unit,
     onUndo: () -> Unit,
     onRedo: () -> Unit,
     onClearAll: () -> Unit,
-    onScaleFactorChanged: (Float) -> Unit,
+
     onUpdateTextDefault: (Color?, TextUnit?) -> Unit,
     onUpdateDrawingDefault: (Color?, Float?) -> Unit,
     onUpdateShapeDefault: (Color?, Float?, Boolean?) -> Unit,
@@ -87,15 +100,28 @@ internal fun PhotoEditorScreen(
     var showEmojiPicker by remember { mutableStateOf(false) }
     val textDialogPosition by remember { mutableStateOf(Offset.Zero) }
 
-    val styleContext = remember(editorState) { editorState.toStyleContext(
-        onUpdateTextDefault = onUpdateTextDefault,
-        onUpdateDrawingDefault = onUpdateDrawingDefault,
-        onUpdateShapeDefault = onUpdateShapeDefault,
-        onUpdateSelectedTextStyle = onUpdateSelectedTextStyle,
-        onUpdateSelectedEmojiSize = onUpdateSelectedEmojiSize,
-        onUpdateSelectedDrawingStyle = onUpdateSelectedDrawingStyle,
-        onUpdateSelectedShapeStyle = onUpdateSelectedShapeStyle
-    ) }
+    val styleContext = remember(editorState) {
+        editorState.toStyleContext(
+            onUpdateTextDefault = onUpdateTextDefault,
+            onUpdateDrawingDefault = onUpdateDrawingDefault,
+            onUpdateSelectedTextStyle = onUpdateSelectedTextStyle,
+            onUpdateSelectedEmojiSize = onUpdateSelectedEmojiSize,
+            onUpdateSelectedDrawingStyle = onUpdateSelectedDrawingStyle,
+            onUpdateSelectedShapeStyle = onUpdateSelectedShapeStyle
+        )
+    }
+
+    val selected = editorState.selectedElementId?.let { id ->
+        editorState.elements.firstOrNull { it.id == id }
+    }
+    val selectionIsStyleable = selected is EditElement.Text ||
+        selected is EditElement.Emoji ||
+        selected is EditElement.Drawing ||
+        selected is EditElement.Shape
+    val toolIsTextOrDrawing = editorState.currentTool == EditorTool.Text ||
+        editorState.currentTool == EditorTool.Drawing
+    val showStylePanel = (toolIsTextOrDrawing || selectionIsStyleable) && styleContext != null
+    val showShapeSheet = editorState.currentTool is EditorTool.Shape
 
     Scaffold(
         topBar = {
@@ -112,23 +138,6 @@ internal fun PhotoEditorScreen(
                 onDeleteSelected = onDeleteSelected,
                 onClearAll = onClearAll
             )
-        },
-        bottomBar = {
-            Column {
-                styleContext?.let { ctx -> EditorStylePanel(context = ctx) }
-                EditorToolbar(
-                    currentTool = editorState.currentTool,
-                    onToolSelected = { tool ->
-                        when (tool) {
-                            EditorTool.Text -> showTextDialog = true
-                            is EditorTool.Shape -> onAddShape(tool.kind)
-                            else -> Unit
-                        }
-                        onToolSelected(tool)
-                    },
-                    onEmojiClick = { showEmojiPicker = true }
-                )
-            }
         }
     ) { paddingValues ->
         Box(
@@ -150,8 +159,18 @@ internal fun PhotoEditorScreen(
                     onFinishDrawing = onFinishDrawing,
                     onElementTap = onElementSelected,
                     onUpdateElement = onUpdateElement,
-                    onScaleFactorChanged = onScaleFactorChanged,
+                    onContainerSizeChanged = onContainerSizeChanged,
                     modifier = Modifier.fillMaxSize()
+                )
+            }
+
+            if (showShapeSheet) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .pointerInput(Unit) {
+                            detectTapGestures { onToolSelected(EditorTool.None) }
+                        }
                 )
             }
 
@@ -166,10 +185,68 @@ internal fun PhotoEditorScreen(
                 }
             }
 
+            AnimatedVisibility(
+                visible = showStylePanel,
+                enter = slideInVertically { it } + fadeIn(),
+                exit = slideOutVertically { it } + fadeOut(),
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = ToolbarHeight)
+            ) {
+                styleContext?.let { ctx ->
+                    EditorStylePanel(
+                        context = ctx,
+                        onClose = {
+                            onDeselect()
+                            onToolSelected(EditorTool.None)
+                        }
+                    )
+                }
+            }
+
+            AnimatedVisibility(
+                visible = showShapeSheet,
+                enter = slideInVertically { it } + fadeIn(),
+                exit = slideOutVertically { it } + fadeOut(),
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = ToolbarHeight)
+            ) {
+                ShapeSheet(
+                    currentKind = (editorState.currentTool as? EditorTool.Shape)?.kind,
+                    color = editorState.shapeColor,
+                    strokeWidth = editorState.shapeStrokeWidth,
+                    filled = editorState.shapeFilled,
+                    onPickShape = { kind -> onToolSelected(EditorTool.Shape(kind)) },
+                    onColor = { onUpdateShapeDefault(it, null, null) },
+                    onStroke = { onUpdateShapeDefault(null, it, null) },
+                    onFilled = { onUpdateShapeDefault(null, null, it) },
+                    onDone = {
+                        val kind = (editorState.currentTool as? EditorTool.Shape)?.kind
+                            ?: ShapeKind.Rectangle
+                        onAddShape(kind)
+                        onToolSelected(EditorTool.None)
+                    },
+                    onClose = { onToolSelected(EditorTool.None) }
+                )
+            }
+
+            EditorToolbar(
+                currentTool = editorState.currentTool,
+                onToolSelected = { tool ->
+                    if (tool == EditorTool.Text) showTextDialog = true
+                    onToolSelected(tool)
+                },
+                onEmojiClick = { showEmojiPicker = true },
+                onShapeClick = { onToolSelected(EditorTool.Shape(ShapeKind.Rectangle)) },
+                modifier = Modifier.align(Alignment.BottomCenter)
+            )
+
             editorState.error?.let { errorMessage ->
                 Snackbar(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
+                        .padding(bottom = ToolbarHeight)
                         .padding(16.dp)
                 ) { Text(errorMessage) }
             }
@@ -200,7 +277,6 @@ internal fun PhotoEditorScreen(
 private fun EditorState.toStyleContext(
     onUpdateTextDefault: (Color?, TextUnit?) -> Unit,
     onUpdateDrawingDefault: (Color?, Float?) -> Unit,
-    onUpdateShapeDefault: (Color?, Float?, Boolean?) -> Unit,
     onUpdateSelectedTextStyle: (Color?, TextUnit?) -> Unit,
     onUpdateSelectedEmojiSize: (TextUnit) -> Unit,
     onUpdateSelectedDrawingStyle: (Color?, Float?) -> Unit,
@@ -243,14 +319,6 @@ private fun EditorState.toStyleContext(
             strokeWidth = drawingStrokeWidth,
             onColor = { onUpdateDrawingDefault(it, null) },
             onStroke = { onUpdateDrawingDefault(null, it) }
-        )
-        currentTool is EditorTool.Shape -> StyleContext.ShapeStyle(
-            color = shapeColor,
-            strokeWidth = shapeStrokeWidth,
-            filled = shapeFilled,
-            onColor = { onUpdateShapeDefault(it, null, null) },
-            onStroke = { onUpdateShapeDefault(null, it, null) },
-            onFilled = { onUpdateShapeDefault(null, null, it) }
         )
         else -> null
     }
@@ -351,4 +419,3 @@ private fun EmptyState(onPickImage: () -> Unit) {
         }
     }
 }
-

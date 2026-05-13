@@ -13,6 +13,7 @@ import android.provider.MediaStore
 import android.util.TypedValue
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntSize
 import androidx.core.graphics.withSave
 import com.muzamil.photoeditor.domain.EditElement
 import com.muzamil.photoeditor.domain.ShapeKind
@@ -23,57 +24,91 @@ import java.io.FileOutputStream
 import java.io.OutputStream
 import kotlin.math.PI
 import kotlin.math.cos
+import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sin
 
+/**
+ * Exports the edited image to storage.
+ *
+ * Coordinate model
+ * ────────────────
+ * The preview uses ContentScale.Crop, so the inner container fills the screen
+ * and some bitmap edges may be hidden. Element positions (offsetRatioX/Y) are
+ * stored as fractions of the *container* (0 = left/top edge of visible area,
+ * 1 = right/bottom edge of visible area), NOT fractions of the full bitmap.
+ *
+ * To convert back to bitmap pixels we must undo the crop:
+ *
+ *   cropScale  = max(containerPx / bitmapPx)      ← same as Crop display scale
+ *   visibleW   = containerW / cropScale            ← bitmap pixels visible horizontally
+ *   cropOffX   = (bitmapW − visibleW) / 2          ← hidden bitmap pixels on left
+ *   bitmapX    = cropOffX + ratio * visibleW
+ *
+ * Font sizes follow the same logic:
+ *   textSizeBitmapPx = spInDevicePx / cropScale
+ *
+ * @param backgroundBitmap  Original source bitmap (not mutated externally).
+ * @param elements          All editor elements in z-order.
+ * @param containerSize     Preview container size in **device pixels** (from onSizeChanged).
+ * @param quality           JPEG compression quality (0–100).
+ * @param format            Output bitmap compress format.
+ */
 suspend fun Context.saveEditedImage(
     backgroundBitmap: Bitmap,
     elements: List<EditElement>,
-    previewScaleFactor: Float,
+    containerSize: IntSize,
     quality: Int = 95,
-    format: Bitmap.CompressFormat = Bitmap.CompressFormat.JPEG
+    format: Bitmap.CompressFormat = Bitmap.CompressFormat.JPEG,
 ): Result<String> = withContext(Dispatchers.IO) {
-    try {
-        // Create a mutable copy of the background bitmap
+    runCatching {
         val resultBitmap = backgroundBitmap.copy(Bitmap.Config.ARGB_8888, true)
         val canvas = Canvas(resultBitmap)
+        val bitmapW = resultBitmap.width.toFloat()
+        val bitmapH = resultBitmap.height.toFloat()
 
-        val bitmapWidth = resultBitmap.width.toFloat()
-        val bitmapHeight = resultBitmap.height.toFloat()
+        // ── Crop-scale geometry ──────────────────────────────────────────────
+        val scaleX = containerSize.width  / bitmapW
+        val scaleY = containerSize.height / bitmapH
+        // Crop uses the LARGER scale so the container is fully covered.
+        val cropScale = max(scaleX, scaleY)
+
+        // How many bitmap pixels are hidden on each side due to cropping.
+        val visibleBitmapW = containerSize.width  / cropScale
+        val visibleBitmapH = containerSize.height / cropScale
+        val cropOffsetX    = (bitmapW - visibleBitmapW) / 2f
+        val cropOffsetY    = (bitmapH - visibleBitmapH) / 2f
+
+        // Convert a container-normalised ratio → bitmap pixel coordinate.
+        fun Float.toBitmapX() = cropOffsetX + this * visibleBitmapW
+        fun Float.toBitmapY() = cropOffsetY + this * visibleBitmapH
+
+        // Convert sp (as stored in element) → bitmap pixel size.
         val displayMetrics = resources.displayMetrics
+        fun spToBitmapPx(sp: Float): Float {
+            val devicePx = TypedValue.applyDimension(
+                TypedValue.COMPLEX_UNIT_SP, sp, displayMetrics
+            )
+            return devicePx / cropScale
+        }
 
-        // Sort elements by zIndex to render in correct order
-        val sortedElements = elements.sortedBy { it.zIndex }
-
-        sortedElements.forEach { element ->
+        // ── Render elements ──────────────────────────────────────────────────
+        elements.sortedBy { it.zIndex }.forEach { element ->
             when (element) {
+
+                // ── Text ─────────────────────────────────────────────────────
                 is EditElement.Text -> {
-                    val paint = Paint().apply {
-                        color = element.color.toArgb()
-                        // fontSize is sp → device-px; divide by the preview scale to land in
-                        // bitmap-px, so the exported text covers the same fraction of the
-                        // image that the preview showed.
-                        val spPx = TypedValue.applyDimension(
-                            TypedValue.COMPLEX_UNIT_SP,
-                            element.fontSize.value,
-                            displayMetrics
-                        )
-                        textSize = spPx / previewScaleFactor
-                        typeface = if (element.fontWeight == FontWeight.Bold) {
-                            Typeface.DEFAULT_BOLD
-                        } else {
-                            Typeface.DEFAULT
-                        }
-                        isAntiAlias = true
+                    val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                        color     = element.color.toArgb()
+                        textSize  = spToBitmapPx(element.fontSize.value)
+                        typeface  = if (element.fontWeight == FontWeight.Bold)
+                            Typeface.DEFAULT_BOLD else Typeface.DEFAULT
                         textAlign = Paint.Align.CENTER
                     }
-
-                    val centerX = element.offsetRatioX * bitmapWidth
-                    val centerY = element.offsetRatioY * bitmapHeight
-
-                    // Vertical centering: drawText draws baseline at y; offset baseline so
-                    // the glyphs' visual center lands on the translated origin.
-                    val fm = paint.fontMetrics
+                    val centerX  = element.offsetRatioX.toBitmapX()
+                    val centerY  = element.offsetRatioY.toBitmapY()
+                    val fm       = paint.fontMetrics
+                    // Shift baseline so glyphs are vertically centred on (0,0).
                     val baselineY = -(fm.ascent + fm.descent) / 2f
 
                     canvas.withSave {
@@ -84,159 +119,132 @@ suspend fun Context.saveEditedImage(
                     }
                 }
 
-
-
+                // ── Emoji ─────────────────────────────────────────────────────
                 is EditElement.Emoji -> {
-                    val x = element.offsetRatioX * bitmapWidth
-                    val y = element.offsetRatioY * bitmapHeight
+                    val centerX = element.offsetRatioX.toBitmapX()
+                    val centerY = element.offsetRatioY.toBitmapY()
 
-                    // sp → device-px, then divided by previewScaleFactor so the emoji covers
-                    // the same fraction of the bitmap it did in the preview.
-                    val textSizePx = TypedValue.applyDimension(
-                        TypedValue.COMPLEX_UNIT_SP,
-                        element.size.value,
-                        displayMetrics
-                    ) / previewScaleFactor
-
-                    val paint = Paint().apply {
-                        textSize = textSizePx
-                        isAntiAlias = true
+                    val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                        textSize = spToBitmapPx(element.size.value)
                     }
-
-                    // Measure from Paint — TextMeasurer would re-apply density and double
-                    // the size. We want dimensions in the same px space as textSizePx.
-                    val emojiWidth = paint.measureText(element.emoji)
-                    val fm = paint.fontMetrics
-                    val emojiHeight = fm.bottom - fm.top
-
-                    canvas.withSave {
-                        translate(x, y)
-                        scale(element.scale, element.scale)
-                        rotate(element.rotation, 0f, 0f)
-                        translate(-emojiWidth / 2f, -emojiHeight / 2f)
-
-                        drawText(
-                            element.emoji,
-                            0f,
-                            -fm.top,
-                            paint
-                        )
-                    }
-                }
-
-                is EditElement.Drawing -> {
-                    val paint = Paint().apply {
-                        color = element.color.toArgb()
-                        strokeWidth = element.strokeWidth
-                        style = Paint.Style.STROKE
-                        strokeCap = Paint.Cap.ROUND
-                        strokeJoin = Paint.Join.ROUND
-                        isAntiAlias = true
-                    }
-
-                    for (i in 0 until element.points.size - 1) {
-                        val start = element.points[i]
-                        val end = element.points[i + 1]
-
-                        canvas.drawLine(
-                            start.x * bitmapWidth,
-                            start.y * bitmapHeight,
-                            end.x * bitmapWidth,
-                            end.y * bitmapHeight,
-                            paint
-                        )
-                    }
-                }
-
-                is EditElement.Shape -> {
-                    val paint = Paint().apply {
-                        color = element.color.toArgb()
-                        strokeWidth = element.strokeWidth
-                        style = if (element.filled) Paint.Style.FILL else Paint.Style.STROKE
-                        strokeCap = Paint.Cap.ROUND
-                        strokeJoin = Paint.Join.ROUND
-                        isAntiAlias = true
-                    }
-
-                    val centerX = element.offsetRatioX * bitmapWidth
-                    val centerY = element.offsetRatioY * bitmapHeight
-                    val halfW = (element.widthRatio * bitmapWidth) / 2f
-                    val halfH = (element.heightRatio * bitmapHeight) / 2f
+                    val emojiW  = paint.measureText(element.emoji)
+                    val fm      = paint.fontMetrics
+                    val emojiH  = fm.bottom - fm.top
 
                     canvas.withSave {
                         translate(centerX, centerY)
                         rotate(element.rotation)
                         scale(element.scale, element.scale)
+                        // Centre the glyph on (0,0) in local (post-scale) space.
+                        translate(-emojiW / 2f, -emojiH / 2f)
+                        drawText(element.emoji, 0f, -fm.top, paint)
+                    }
+                }
 
+                // ── Drawing ───────────────────────────────────────────────────
+                // Drawing points are stored as bitmap-normalised ratios (0–1
+                // spans the full bitmap), so no crop offset is needed here.
+                is EditElement.Drawing -> {
+                    if (element.points.size < 2) return@forEach
+                    val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                        color       = element.color.toArgb()
+                        strokeWidth = element.strokeWidth
+                        style       = Paint.Style.STROKE
+                        strokeCap   = Paint.Cap.ROUND
+                        strokeJoin  = Paint.Join.ROUND
+                    }
+                    for (i in 0 until element.points.size - 1) {
+                        val s = element.points[i]
+                        val e = element.points[i + 1]
+                        canvas.drawLine(
+                            s.x * bitmapW, s.y * bitmapH,
+                            e.x * bitmapW, e.y * bitmapH,
+                            paint,
+                        )
+                    }
+                }
+
+                // ── Shape ─────────────────────────────────────────────────────
+                is EditElement.Shape -> {
+                    val centerX = element.offsetRatioX.toBitmapX()
+                    val centerY = element.offsetRatioY.toBitmapY()
+
+                    // widthRatio / heightRatio are fractions of the *visible* container area,
+                    // not the full bitmap — use visibleBitmapW/H to match what the preview shows.
+                    val halfW = (element.widthRatio  * visibleBitmapW) / 2f   // ← was bitmapW
+                    val halfH = (element.heightRatio * visibleBitmapH) / 2f   // ← was bitmapH
+
+                    val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                        color       = element.color.toArgb()
+                        strokeWidth = element.strokeWidth
+                        style       = if (element.filled) Paint.Style.FILL else Paint.Style.STROKE
+                        strokeCap   = Paint.Cap.ROUND
+                        strokeJoin  = Paint.Join.ROUND
+                    }
+
+                    canvas.withSave {
+                        translate(centerX, centerY)
+                        rotate(element.rotation)
+                        scale(element.scale, element.scale)
                         when (element.kind) {
-                            ShapeKind.Rectangle -> drawRect(-halfW, -halfH, halfW, halfH, paint)
-                            ShapeKind.Circle -> drawOval(-halfW, -halfH, halfW, halfH, paint)
-                            ShapeKind.Line -> drawLine(-halfW, 0f, halfW, 0f, paint)
-                            ShapeKind.Triangle -> drawPath(triangleExportPath(halfW, halfH), paint)
-                            ShapeKind.Star -> drawPath(starExportPath(halfW, halfH), paint)
-                            ShapeKind.Arrow -> drawPath(arrowExportPath(halfW, halfH), paint)
-                            ShapeKind.Heart -> drawPath(heartExportPath(halfW, halfH), paint)
+                            ShapeKind.Rectangle -> canvas.drawRect(-halfW, -halfH, halfW, halfH, paint)
+                            ShapeKind.Circle    -> canvas.drawOval(-halfW, -halfH, halfW, halfH, paint)
+                            ShapeKind.Line      -> canvas.drawLine(-halfW, 0f, halfW, 0f, paint)
+                            ShapeKind.Triangle  -> canvas.drawPath(trianglePath(halfW, halfH), paint)
+                            ShapeKind.Star      -> canvas.drawPath(starPath(halfW, halfH), paint)
+                            ShapeKind.Arrow     -> canvas.drawPath(arrowPath(halfW, halfH), paint)
+                            ShapeKind.Heart     -> canvas.drawPath(heartPath(halfW, halfH), paint)
                         }
                     }
                 }
             }
         }
 
-        // Save to file
+        // ── Save to storage ──────────────────────────────────────────────────
         val fileName = "edited_image_${System.currentTimeMillis()}.jpg"
         val outputStream: OutputStream?
         val filePath: String
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            // Use MediaStore for Android 10+
             val contentValues = ContentValues().apply {
                 put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
                 put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
                 put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_PICTURES)
             }
-
             val uri = contentResolver.insert(
                 MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                contentValues
+                contentValues,
             )
-
             outputStream = uri?.let { contentResolver.openOutputStream(it) }
-            filePath = uri?.toString() ?: ""
+            filePath     = uri?.toString() ?: ""
         } else {
-            // Use legacy storage for older Android versions
-            val imagesDir = Environment.getExternalStoragePublicDirectory(
-                Environment.DIRECTORY_PICTURES
-            )
-            val image = File(imagesDir, fileName)
-            outputStream = FileOutputStream(image)
-            filePath = image.absolutePath
+            val dir   = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES)
+            val file  = File(dir, fileName)
+            outputStream = FileOutputStream(file)
+            filePath     = file.absolutePath
         }
 
-        outputStream?.use { stream ->
-            resultBitmap.compress(format, quality, stream)
-        }
-
-        // Clean up
+        outputStream?.use { resultBitmap.compress(format, quality, it) }
         resultBitmap.recycle()
 
-        Result.success(filePath)
-    } catch (e: Exception) {
-        Result.failure(e)
+        filePath
     }
 }
 
-private fun triangleExportPath(halfW: Float, halfH: Float): Path = Path().apply {
+// ── Shape path helpers ────────────────────────────────────────────────────────
+
+private fun trianglePath(halfW: Float, halfH: Float) = Path().apply {
     moveTo(0f, -halfH)
-    lineTo(halfW, halfH)
+    lineTo(halfW,  halfH)
     lineTo(-halfW, halfH)
     close()
 }
 
-private fun starExportPath(halfW: Float, halfH: Float, points: Int = 5): Path = Path().apply {
+private fun starPath(halfW: Float, halfH: Float, points: Int = 5) = Path().apply {
     val outer = min(halfW, halfH)
     val inner = outer * 0.4f
-    val step = (PI / points).toFloat()
-    var angle = -PI.toFloat() / 2f
+    val step  = (PI / points).toFloat()
+    var angle = (-PI / 2).toFloat()
     for (i in 0 until points * 2) {
         val r = if (i % 2 == 0) outer else inner
         val x = r * cos(angle)
@@ -247,23 +255,23 @@ private fun starExportPath(halfW: Float, halfH: Float, points: Int = 5): Path = 
     close()
 }
 
-private fun arrowExportPath(halfW: Float, halfH: Float): Path = Path().apply {
-    val bodyTop = -halfH * 0.3f
-    val bodyBottom = halfH * 0.3f
-    val headStart = halfW * 0.3f
-    moveTo(-halfW, bodyTop)
+private fun arrowPath(halfW: Float, halfH: Float) = Path().apply {
+    val bodyTop    = -halfH * 0.3f
+    val bodyBottom =  halfH * 0.3f
+    val headStart  =  halfW * 0.3f
+    moveTo(-halfW,   bodyTop)
     lineTo(headStart, bodyTop)
     lineTo(headStart, -halfH * 0.7f)
-    lineTo(halfW, 0f)
-    lineTo(headStart, halfH * 0.7f)
+    lineTo(halfW,  0f)
+    lineTo(headStart,  halfH * 0.7f)
     lineTo(headStart, bodyBottom)
-    lineTo(-halfW, bodyBottom)
+    lineTo(-halfW,  bodyBottom)
     close()
 }
 
-private fun heartExportPath(halfW: Float, halfH: Float): Path = Path().apply {
+private fun heartPath(halfW: Float, halfH: Float) = Path().apply {
     moveTo(0f, -halfH * 0.5f)
-    cubicTo(-halfW, -1.2f * halfH, -1.2f * halfW, 0.1f * halfH, 0f, halfH)
-    cubicTo(1.2f * halfW, 0.1f * halfH, halfW, -1.2f * halfH, 0f, -halfH * 0.5f)
+    cubicTo(-halfW,        -1.2f * halfH,  -1.2f * halfW,  0.1f * halfH,  0f, halfH)
+    cubicTo( 1.2f * halfW,  0.1f * halfH,   halfW,         -1.2f * halfH, 0f, -halfH * 0.5f)
     close()
 }

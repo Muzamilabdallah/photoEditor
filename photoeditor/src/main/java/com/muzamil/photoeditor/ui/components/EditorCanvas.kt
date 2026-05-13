@@ -4,10 +4,10 @@ import android.graphics.Bitmap
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -47,7 +47,7 @@ internal fun EditorCanvas(
     onFinishDrawing: () -> Unit,
     onElementTap: (String) -> Unit,
     onUpdateElement: (String, Float, Float, Float, Float) -> Unit,
-    onScaleFactorChanged: (Float) -> Unit,
+    onContainerSizeChanged: (IntSize) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val density = LocalDensity.current
@@ -64,9 +64,9 @@ internal fun EditorCanvas(
 
     // Publish scaleFactor so the ViewModel can hand it to the exporter — text and
     // emoji sizes are stored in sp and need this to convert to bitmap-pixels.
-    LaunchedEffect(scaleFactor) {
-        onScaleFactorChanged(scaleFactor)
-    }
+//    LaunchedEffect(scaleFactor) {
+//        onScaleFactorChanged(scaleFactor)
+//    }
 
     // Pointer events on the drawing Canvas arrive in the inner Box's local space,
     // which is sized to exactly the fitted image — so coords are already
@@ -94,7 +94,15 @@ internal fun EditorCanvas(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .onSizeChanged { containerSize = it }
+                .onSizeChanged {
+                    containerSize = it
+                    onContainerSizeChanged(
+                        IntSize(
+                            it.width,
+                            it.height
+                        )
+                    )  // ← was: compute scale and call onScaleFactorChanged
+                }
         ) {
             bitmap?.let {
                 Image(
@@ -105,9 +113,23 @@ internal fun EditorCanvas(
                 )
             }
 
-            Canvas(modifier = Modifier
-                .fillMaxSize()
-                .pointerInput(currentTool) { /* same */ }) {
+            Canvas(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .pointerInput(currentTool) {
+                        if (currentTool == EditorTool.Drawing) {
+                            detectDragGestures(
+                                onDragStart = { offset ->
+                                    onStartDrawing(screenToRatio(offset))
+                                },
+                                onDrag = { change, _ ->
+                                    onContinueDrawing(screenToRatio(change.position))
+                                },
+                                onDragEnd = { onFinishDrawing() },
+                                onDragCancel = { onFinishDrawing() }
+                            )
+                        }
+                    }) {
                 val bmp = bitmap ?: return@Canvas
                 val bmpW = bmp.width.toFloat()
                 val bmpH = bmp.height.toFloat()

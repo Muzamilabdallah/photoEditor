@@ -6,6 +6,7 @@ import android.util.Log
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModel
@@ -23,6 +24,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 class PhotoEditorViewModel : ViewModel() {
+
     private val _state = MutableStateFlow(EditorState())
     val state: StateFlow<EditorState> = _state.asStateFlow()
 
@@ -37,123 +39,57 @@ class PhotoEditorViewModel : ViewModel() {
     private val _saveSuccess = MutableStateFlow<String?>(null)
     val saveSuccess: StateFlow<String?> = _saveSuccess.asStateFlow()
 
+    // Container size in device pixels — updated from onSizeChanged in the UI.
+    // Replaces the old previewScaleFactor: the exporter derives the correct
+    // crop scale itself from containerSize + bitmap dimensions.
+    private val _containerSize = MutableStateFlow(IntSize.Zero)
+    val containerSize: StateFlow<IntSize> = _containerSize.asStateFlow()
+
     init {
         historyManager.initialize(emptyList())
     }
 
-    // ========================================
-    // Tool Selection
-    // ========================================
+    // ── Tool Selection ────────────────────────────────────────────────────────
 
     fun selectTool(tool: EditorTool) {
         _state.update { it.copy(currentTool = tool, selectedElementId = null) }
     }
 
-    // ========================================
-    // Text Operations
-    // ========================================
+    // ── Image ─────────────────────────────────────────────────────────────────
+
+    fun loadImage(bitmap: Bitmap) {
+        _state.update { it.copy(backgroundBitmap = bitmap) }
+    }
+
+    /**
+     * Called from the UI whenever the preview container is measured.
+     * Pass the value from `onSizeChanged { containerSize = it }` directly.
+     */
+    fun setContainerSize(size: IntSize) {
+        if (size.width <= 0 || size.height <= 0) return
+        if (_containerSize.value == size) return
+        _containerSize.value = size
+    }
+
+    // ── Text ──────────────────────────────────────────────────────────────────
 
     fun addText(text: String, position: Offset = Offset(0.5f, 0.5f)) {
-        val newElement = EditElement.Text(
-            text = text,
-            offsetRatioX = position.x,
-            offsetRatioY = position.y,
-            color = _state.value.textColor,
-            fontSize = 28.sp,
-            fontWeight = FontWeight.Bold,
-            zIndex = _state.value.elements.size
-        )
-
-        addElement(newElement)
-    }
-
-    // ========================================
-    // Emoji Operations
-    // ========================================
-
-    fun addEmoji(emoji: String) {
-        val newElement = EditElement.Emoji(
-            emoji = emoji,
-            offsetRatioX = 0.5f,
-            offsetRatioY = 0.5f,
-            size = 48.sp,
-            zIndex = _state.value.elements.size
-        )
-
-        addElement(newElement)
-    }
-
-    // ========================================
-    // Shape Operations
-    // ========================================
-
-    fun addShape(kind: ShapeKind) {
-        val s = _state.value
-        val newElement = EditElement.Shape(
-            kind = kind,
-            color = s.shapeColor,
-            strokeWidth = s.shapeStrokeWidth,
-            filled = s.shapeFilled,
-            zIndex = s.elements.size
-        )
-        addElement(newElement)
-    }
-
-    fun updateShapeStyle(
-        color: Color? = null,
-        strokeWidth: Float? = null,
-        filled: Boolean? = null
-    ) {
-        _state.update {
-            it.copy(
-                shapeColor = color ?: it.shapeColor,
-                shapeStrokeWidth = strokeWidth ?: it.shapeStrokeWidth,
-                shapeFilled = filled ?: it.shapeFilled
+        addElement(
+            EditElement.Text(
+                text = text,
+                offsetRatioX = position.x,
+                offsetRatioY = position.y,
+                color = _state.value.textColor,
+                fontSize = 28.sp,
+                fontWeight = FontWeight.Bold,
+                zIndex = _state.value.elements.size,
             )
-        }
-    }
-
-    // ========================================
-    // Transform Operations (Generic for all types)
-    // ========================================
-
-    fun updateElementTransform(
-        id: String,
-        offsetRatioX: Float,
-        offsetRatioY: Float,
-        rotation: Float,
-        scale: Float
-    ) {
-        updateElement(id) { element ->
-            when (element) {
-                is EditElement.Text -> element.copy(
-                    offsetRatioX = offsetRatioX,
-                    offsetRatioY = offsetRatioY,
-                    rotation = rotation,
-                    scale = scale.coerceIn(0.5f, 3f)
-                )
-                is EditElement.Emoji -> element.copy(
-                    offsetRatioX = offsetRatioX,
-                    offsetRatioY = offsetRatioY,
-                    rotation = rotation,
-                    scale = scale.coerceIn(0.5f, 3f)
-                )
-                is EditElement.Shape -> element.copy(
-                    offsetRatioX = offsetRatioX,
-                    offsetRatioY = offsetRatioY,
-                    rotation = rotation,
-                    scale = scale.coerceIn(0.5f, 5f)
-                )
-                is EditElement.Drawing -> element // drawings don't transform via gesture
-            }
-        }
+        )
     }
 
     fun updateTextContent(elementId: String, newText: String) {
-        updateElement(elementId) { element ->
-            if (element is EditElement.Text) {
-                element.copy(text = newText)
-            } else element
+        updateElement(elementId) { el ->
+            if (el is EditElement.Text) el.copy(text = newText) else el
         }
     }
 
@@ -161,91 +97,106 @@ class PhotoEditorViewModel : ViewModel() {
         _state.update {
             it.copy(
                 textColor = color ?: it.textColor,
-                textSize = size ?: it.textSize
+                textSize = size ?: it.textSize,
             )
         }
     }
 
     fun updateSelectedTextStyle(color: Color? = null, fontSize: TextUnit? = null) {
         val id = _state.value.selectedElementId ?: return
-        updateElement(id) { element ->
-            if (element is EditElement.Text) {
-                element.copy(
-                    color = color ?: element.color,
-                    fontSize = fontSize ?: element.fontSize
-                )
-            } else element
+        updateElement(id) { el ->
+            if (el is EditElement.Text) el.copy(
+                color = color ?: el.color,
+                fontSize = fontSize ?: el.fontSize,
+            ) else el
         }
+    }
+
+    // ── Emoji ─────────────────────────────────────────────────────────────────
+
+    fun addEmoji(emoji: String) {
+        addElement(
+            EditElement.Emoji(
+                emoji = emoji,
+                offsetRatioX = 0.5f,
+                offsetRatioY = 0.5f,
+                size = 48.sp,
+                zIndex = _state.value.elements.size,
+            )
+        )
     }
 
     fun updateSelectedEmojiSize(size: TextUnit) {
         val id = _state.value.selectedElementId ?: return
-        updateElement(id) { element ->
-            if (element is EditElement.Emoji) element.copy(size = size) else element
+        updateElement(id) { el ->
+            if (el is EditElement.Emoji) el.copy(size = size) else el
         }
     }
 
-    fun updateSelectedDrawingStyle(color: Color? = null, strokeWidth: Float? = null) {
-        val id = _state.value.selectedElementId ?: return
-        updateElement(id) { element ->
-            if (element is EditElement.Drawing) {
-                element.copy(
-                    color = color ?: element.color,
-                    strokeWidth = strokeWidth ?: element.strokeWidth
-                )
-            } else element
+    // ── Shape ─────────────────────────────────────────────────────────────────
+
+    fun addShape(kind: ShapeKind) {
+        val s = _state.value
+        addElement(
+            EditElement.Shape(
+                kind = kind,
+                color = s.shapeColor,
+                strokeWidth = s.shapeStrokeWidth,
+                filled = s.shapeFilled,
+                zIndex = s.elements.size,
+            )
+        )
+    }
+
+    fun updateShapeStyle(
+        color: Color? = null,
+        strokeWidth: Float? = null,
+        filled: Boolean? = null,
+    ) {
+        _state.update {
+            it.copy(
+                shapeColor = color ?: it.shapeColor,
+                shapeStrokeWidth = strokeWidth ?: it.shapeStrokeWidth,
+                shapeFilled = filled ?: it.shapeFilled,
+            )
         }
     }
 
     fun updateSelectedShapeStyle(
         color: Color? = null,
         strokeWidth: Float? = null,
-        filled: Boolean? = null
+        filled: Boolean? = null,
     ) {
         val id = _state.value.selectedElementId ?: return
-        updateElement(id) { element ->
-            if (element is EditElement.Shape) {
-                element.copy(
-                    color = color ?: element.color,
-                    strokeWidth = strokeWidth ?: element.strokeWidth,
-                    filled = filled ?: element.filled
-                )
-            } else element
+        updateElement(id) { el ->
+            if (el is EditElement.Shape) el.copy(
+                color = color ?: el.color,
+                strokeWidth = strokeWidth ?: el.strokeWidth,
+                filled = filled ?: el.filled,
+            ) else el
         }
     }
 
-    // ========================================
-    // Drawing Operations
-    // ========================================
+    // ── Drawing ───────────────────────────────────────────────────────────────
 
     fun startDrawing(startPoint: Offset) {
-        val newDrawing = EditElement.Drawing(
-            points = listOf(startPoint),
-            color = _state.value.drawingColor,
-            strokeWidth = _state.value.drawingStrokeWidth,
-            zIndex = _state.value.elements.size
-        )
-
+        val s = _state.value
         _state.update {
-            it.copy(elements = it.elements + newDrawing)
+            it.copy(
+                elements = it.elements + EditElement.Drawing(
+                    points = listOf(startPoint),
+                    color = s.drawingColor,
+                    strokeWidth = s.drawingStrokeWidth,
+                    zIndex = s.elements.size,
+                )
+            )
         }
     }
 
     fun continueDrawing(point: Offset) {
-        _state.update { currentState ->
-            val lastElement = currentState.elements.lastOrNull()
-
-            if (lastElement is EditElement.Drawing) {
-                val updatedDrawing = lastElement.copy(
-                    points = lastElement.points + point
-                )
-
-                currentState.copy(
-                    elements = currentState.elements.dropLast(1) + updatedDrawing
-                )
-            } else {
-                currentState
-            }
+        _state.update { s ->
+            val last = s.elements.lastOrNull() as? EditElement.Drawing ?: return@update s
+            s.copy(elements = s.elements.dropLast(1) + last.copy(points = last.points + point))
         }
     }
 
@@ -257,20 +208,63 @@ class PhotoEditorViewModel : ViewModel() {
         _state.update {
             it.copy(
                 drawingColor = color ?: it.drawingColor,
-                drawingStrokeWidth = strokeWidth ?: it.drawingStrokeWidth
+                drawingStrokeWidth = strokeWidth ?: it.drawingStrokeWidth,
             )
         }
     }
 
-    // ========================================
-    // Selection
-    // ========================================
+    fun updateSelectedDrawingStyle(color: Color? = null, strokeWidth: Float? = null) {
+        val id = _state.value.selectedElementId ?: return
+        updateElement(id) { el ->
+            if (el is EditElement.Drawing) el.copy(
+                color = color ?: el.color,
+                strokeWidth = strokeWidth ?: el.strokeWidth,
+            ) else el
+        }
+    }
+
+    // ── Transform (drag / pinch / rotate) ────────────────────────────────────
+
+    fun updateElementTransform(
+        id: String,
+        offsetRatioX: Float,
+        offsetRatioY: Float,
+        rotation: Float,
+        scale: Float,
+    ) {
+        updateElement(id) { el ->
+            when (el) {
+                is EditElement.Text -> el.copy(
+                    offsetRatioX = offsetRatioX,
+                    offsetRatioY = offsetRatioY,
+                    rotation = rotation,
+                    scale = scale.coerceIn(0.5f, 3f),
+                )
+
+                is EditElement.Emoji -> el.copy(
+                    offsetRatioX = offsetRatioX,
+                    offsetRatioY = offsetRatioY,
+                    rotation = rotation,
+                    scale = scale.coerceIn(0.5f, 3f),
+                )
+
+                is EditElement.Shape -> el.copy(
+                    offsetRatioX = offsetRatioX,
+                    offsetRatioY = offsetRatioY,
+                    rotation = rotation,
+                    scale = scale.coerceIn(0.5f, 5f),
+                )
+
+                is EditElement.Drawing -> el // drawings don't transform via gesture
+            }
+        }
+    }
+
+    // ── Selection ─────────────────────────────────────────────────────────────
 
     fun selectElement(elementId: String) {
-        if (elementId.isEmpty()) {
-            _state.update { it.copy(selectedElementId = null) }
-        } else {
-            _state.update { it.copy(selectedElementId = elementId) }
+        _state.update {
+            it.copy(selectedElementId = elementId.ifEmpty { null })
         }
     }
 
@@ -278,51 +272,109 @@ class PhotoEditorViewModel : ViewModel() {
         _state.update { it.copy(selectedElementId = null) }
     }
 
-    // ========================================
-    // Delete Operation
-    // ========================================
+    // ── Delete ────────────────────────────────────────────────────────────────
 
     fun deleteElement(elementId: String) {
         _state.update {
             it.copy(
                 elements = it.elements.filter { el -> el.id != elementId },
-                selectedElementId = if (it.selectedElementId == elementId) null else it.selectedElementId
+                selectedElementId = if (it.selectedElementId == elementId) null
+                else it.selectedElementId,
             )
         }
         pushToHistory()
     }
 
     fun deleteSelectedElement() {
-        _state.value.selectedElementId?.let { id ->
-            deleteElement(id)
-        }
+        _state.value.selectedElementId?.let { deleteElement(it) }
     }
 
-    // ========================================
-    // History Operations (Undo/Redo)
-    // ========================================
+    // ── Clear All ─────────────────────────────────────────────────────────────
+
+    fun clearAll() {
+        _state.update { it.copy(elements = emptyList(), selectedElementId = null) }
+        pushToHistory()
+    }
+
+    // ── Undo / Redo ───────────────────────────────────────────────────────────
 
     fun undo() {
         historyManager.undo()?.let { elements ->
-            _state.update {
-                it.copy(
-                    elements = elements,
-                    selectedElementId = null
-                )
-            }
+            _state.update { it.copy(elements = elements, selectedElementId = null) }
             updateHistoryFlags()
         }
     }
 
     fun redo() {
         historyManager.redo()?.let { elements ->
-            _state.update {
-                it.copy(
-                    elements = elements,
-                    selectedElementId = null
-                )
-            }
+            _state.update { it.copy(elements = elements, selectedElementId = null) }
             updateHistoryFlags()
+        }
+    }
+
+    // ── Save ──────────────────────────────────────────────────────────────────
+
+    fun saveEditedImage(
+        context: Context,
+        quality: Int = 95,
+        format: Bitmap.CompressFormat = Bitmap.CompressFormat.JPEG,
+    ) {
+        val bitmap = _state.value.backgroundBitmap
+        val containerSize = _containerSize.value
+
+        if (bitmap == null) {
+            _state.update { it.copy(error = "No image to save") }
+            return
+        }
+        if (containerSize == IntSize.Zero) {
+            _state.update { it.copy(error = "Preview not ready — try again") }
+            return
+        }
+
+        viewModelScope.launch {
+            _state.update { it.copy(isLoading = true, error = null) }
+
+            context.saveEditedImage(
+                backgroundBitmap = bitmap,
+                elements = _state.value.elements,
+                containerSize = containerSize,   // ← replaces previewScaleFactor
+                quality = quality,
+                format = format,
+            ).fold(
+                onSuccess = { path ->
+                    _state.update { it.copy(isLoading = false) }
+                    _saveSuccess.value = path
+                },
+                onFailure = { err ->
+                    Log.e("PhotoEditorVM", "saveEditedImage failed", err)
+                    _state.update {
+                        it.copy(
+                            isLoading = false,
+                            error = err.message ?: "Failed to save image",
+                        )
+                    }
+                },
+            )
+        }
+    }
+
+    // ── Lifecycle ─────────────────────────────────────────────────────────────
+
+    override fun onCleared() {
+        super.onCleared()
+        historyManager.clear()
+    }
+
+    // ── Private helpers ───────────────────────────────────────────────────────
+
+    private fun addElement(element: EditElement) {
+        _state.update { it.copy(elements = it.elements + element) }
+        pushToHistory()
+    }
+
+    private fun updateElement(id: String, transform: (EditElement) -> EditElement) {
+        _state.update { s ->
+            s.copy(elements = s.elements.map { if (it.id == id) transform(it) else it })
         }
     }
 
@@ -334,98 +386,5 @@ class PhotoEditorViewModel : ViewModel() {
     private fun updateHistoryFlags() {
         _canUndo.value = historyManager.canUndo()
         _canRedo.value = historyManager.canRedo()
-    }
-
-    // ========================================
-    // Clear All
-    // ========================================
-
-    fun clearAll() {
-        _state.update {
-            it.copy(
-                elements = emptyList(),
-                selectedElementId = null
-            )
-        }
-        pushToHistory()
-    }
-
-    // ========================================
-    // Helper Methods
-    // ========================================
-
-    private fun addElement(element: EditElement) {
-        _state.update {
-            it.copy(elements = it.elements + element)
-        }
-        pushToHistory()
-    }
-
-    fun loadImage(bitmap: Bitmap) {
-        _state.update {
-            it.copy(backgroundBitmap = bitmap)
-        }
-    }
-
-    fun setPreviewScaleFactor(scaleFactor: Float) {
-        if (scaleFactor <= 0f) return
-        _state.update {
-            if (it.previewScaleFactor == scaleFactor) it
-            else it.copy(previewScaleFactor = scaleFactor)
-        }
-    }
-
-    private fun updateElement(elementId: String, transform: (EditElement) -> EditElement) {
-        _state.update { currentState ->
-            currentState.copy(
-                elements = currentState.elements.map { element ->
-                    if (element.id == elementId) transform(element) else element
-                }
-            )
-        }
-    }
-
-    fun saveEditedImage(
-        context: Context,
-        quality: Int = 95,
-        format: Bitmap.CompressFormat = Bitmap.CompressFormat.JPEG
-    ) {
-        val backgroundBitmap = _state.value.backgroundBitmap
-
-        if (backgroundBitmap == null) {
-            _state.update { it.copy(error = "No image to save") }
-            return
-        }
-
-        viewModelScope.launch {
-            _state.update { it.copy(isLoading = true, error = null) }
-
-            context.saveEditedImage(
-                backgroundBitmap = backgroundBitmap,
-                elements = _state.value.elements,
-                previewScaleFactor = _state.value.previewScaleFactor,
-                quality = quality,
-                format = format
-            ).fold(
-                onSuccess = { path ->
-                    _state.update { it.copy(isLoading = false) }
-                    _saveSuccess.value = path
-                },
-                onFailure = { throwable ->
-                    Log.d("TAG", "saveEditedImage: $throwable")
-                    _state.update {
-                        it.copy(
-                            isLoading = false,
-                            error = throwable.message ?: "Failed to save image"
-                        )
-                    }
-                }
-            )
-        }
-    }
-
-    override fun onCleared() {
-        super.onCleared()
-        historyManager.clear()
     }
 }

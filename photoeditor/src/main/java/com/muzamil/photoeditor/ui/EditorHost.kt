@@ -25,6 +25,7 @@ fun MyEditorScreen(viewModel: PhotoEditorViewModel, onPickImage: () -> Unit) {
         onContinueDrawing = viewModel::continueDrawing,
         onFinishDrawing = viewModel::finishDrawing,
         onElementSelected = viewModel::selectElement,
+        onDeselect = viewModel::deselectElement,
         onDeleteSelected = viewModel::deleteSelectedElement,
         onUpdateElement = { id, ratioX, ratioY, rotation, scale ->
             viewModel.updateElementTransform(id, ratioX, ratioY, rotation, scale)
@@ -36,7 +37,7 @@ fun MyEditorScreen(viewModel: PhotoEditorViewModel, onPickImage: () -> Unit) {
         onSaveImage = {
             viewModel.saveEditedImage(context = context)
         },
-        onScaleFactorChanged = viewModel::setPreviewScaleFactor,
+        onContainerSizeChanged = viewModel::setContainerSize,
         onUpdateTextDefault = { color, size -> viewModel.updateTextStyle(color, size) },
         onUpdateDrawingDefault = { color, stroke -> viewModel.updateDrawingStyle(color, stroke) },
         onUpdateShapeDefault = { color, stroke, filled ->

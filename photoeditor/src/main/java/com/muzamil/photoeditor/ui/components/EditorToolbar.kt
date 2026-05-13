@@ -1,7 +1,6 @@
 package com.muzamil.photoeditor.ui.components
 
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -11,13 +10,13 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Create
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Face
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
@@ -40,58 +39,56 @@ internal fun EditorToolbar(
     currentTool: EditorTool,
     onToolSelected: (EditorTool) -> Unit,
     onEmojiClick: () -> Unit,
+    onShapeClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Surface(
         modifier = modifier.fillMaxWidth(),
-        color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 3.dp
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
+        tonalElevation = 0.dp
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState())
-                .padding(horizontal = 12.dp, vertical = 10.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            ToolButton(
-                icon = Icons.Default.Check,
-                label = "Select",
-                isSelected = currentTool == EditorTool.None,
-                onClick = { onToolSelected(EditorTool.None) }
+        Column(Modifier.fillMaxWidth()) {
+            HorizontalDivider(
+                thickness = 0.5.dp,
+                color = MaterialTheme.colorScheme.outlineVariant
             )
-            ToolButton(
-                icon = Icons.Default.Edit,
-                label = "Text",
-                isSelected = currentTool == EditorTool.Text,
-                onClick = { onToolSelected(EditorTool.Text) }
-            )
-            ToolButton(
-                icon = Icons.Default.Face,
-                label = "Emoji",
-                isSelected = false,
-                onClick = onEmojiClick
-            )
-            ToolButton(
-                icon = Icons.Default.Create,
-                label = "Draw",
-                isSelected = currentTool == EditorTool.Drawing,
-                onClick = { onToolSelected(EditorTool.Drawing) }
-            )
-            ShapeKind.values().forEach { kind ->
-                ShapeToolButton(
-                    kind = kind,
-                    label = kind.label(),
-                    isSelected = currentTool == EditorTool.Shape(kind),
-                    onClick = { onToolSelected(EditorTool.Shape(kind)) }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceAround,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                ToolButton(
+                    icon = Icons.Default.Edit,
+                    label = "Text",
+                    isSelected = currentTool == EditorTool.Text,
+                    onClick = { onToolSelected(EditorTool.Text) }
+                )
+                ToolButton(
+                    icon = Icons.Default.Face,
+                    label = "Emoji",
+                    isSelected = false,
+                    onClick = onEmojiClick
+                )
+                ToolButton(
+                    icon = Icons.Default.Create,
+                    label = "Draw",
+                    isSelected = currentTool == EditorTool.Drawing,
+                    onClick = { onToolSelected(EditorTool.Drawing) }
+                )
+                ToolButton(
+                    icon = Icons.Default.Star,
+                    label = "Shape",
+                    isSelected = currentTool is EditorTool.Shape,
+                    onClick = onShapeClick
                 )
             }
         }
     }
 }
 
-private fun ShapeKind.label(): String = when (this) {
+internal fun ShapeKind.label(): String = when (this) {
     ShapeKind.Rectangle -> "Rect"
     ShapeKind.Circle -> "Circle"
     ShapeKind.Line -> "Line"
@@ -110,7 +107,7 @@ private fun ToolButton(
 ) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.width(72.dp)
+        modifier = Modifier.width(64.dp)
     ) {
         FilledIconButton(
             onClick = onClick,
@@ -143,7 +140,7 @@ private fun ToolButton(
 }
 
 @Composable
-private fun ShapeToolButton(
+internal fun ShapeToolButton(
     kind: ShapeKind,
     label: String,
     isSelected: Boolean,
