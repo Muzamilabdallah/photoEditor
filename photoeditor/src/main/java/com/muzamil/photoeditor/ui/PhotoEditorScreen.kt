@@ -21,10 +21,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.AddCircle
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -43,8 +43,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
@@ -98,7 +98,7 @@ internal fun PhotoEditorScreen(
 ) {
     var showTextDialog by remember { mutableStateOf(false) }
     var showEmojiPicker by remember { mutableStateOf(false) }
-    val textDialogPosition by remember { mutableStateOf(Offset.Zero) }
+    val textDialogPosition by remember { mutableStateOf(Offset(0.5f, 0.5f)) }
 
     val styleContext = remember(editorState) {
         editorState.toStyleContext(
@@ -115,11 +115,11 @@ internal fun PhotoEditorScreen(
         editorState.elements.firstOrNull { it.id == id }
     }
     val selectionIsStyleable = selected is EditElement.Text ||
-        selected is EditElement.Emoji ||
-        selected is EditElement.Drawing ||
-        selected is EditElement.Shape
+            selected is EditElement.Emoji ||
+            selected is EditElement.Drawing ||
+            selected is EditElement.Shape
     val toolIsTextOrDrawing = editorState.currentTool == EditorTool.Text ||
-        editorState.currentTool == EditorTool.Drawing
+            editorState.currentTool == EditorTool.Drawing
     val showStylePanel = (toolIsTextOrDrawing || selectionIsStyleable) && styleContext != null
     val showShapeSheet = editorState.currentTool is EditorTool.Shape
 
@@ -290,16 +290,19 @@ private fun EditorState.toStyleContext(
             onColor = { onUpdateSelectedTextStyle(it, null) },
             onFontSize = { onUpdateSelectedTextStyle(null, it) }
         )
+
         selected is EditElement.Emoji -> StyleContext.EmojiStyle(
             size = selected.size,
             onSize = onUpdateSelectedEmojiSize
         )
+
         selected is EditElement.Drawing -> StyleContext.DrawingStyle(
             color = selected.color,
             strokeWidth = selected.strokeWidth,
             onColor = { onUpdateSelectedDrawingStyle(it, null) },
             onStroke = { onUpdateSelectedDrawingStyle(null, it) }
         )
+
         selected is EditElement.Shape -> StyleContext.ShapeStyle(
             color = selected.color,
             strokeWidth = selected.strokeWidth,
@@ -308,18 +311,21 @@ private fun EditorState.toStyleContext(
             onStroke = { onUpdateSelectedShapeStyle(null, it, null) },
             onFilled = { onUpdateSelectedShapeStyle(null, null, it) }
         )
+
         currentTool == EditorTool.Text -> StyleContext.TextStyle(
             color = textColor,
             fontSize = textSize,
             onColor = { onUpdateTextDefault(it, null) },
             onFontSize = { onUpdateTextDefault(null, it) }
         )
+
         currentTool == EditorTool.Drawing -> StyleContext.DrawingStyle(
             color = drawingColor,
             strokeWidth = drawingStrokeWidth,
             onColor = { onUpdateDrawingDefault(it, null) },
             onStroke = { onUpdateDrawingDefault(null, it) }
         )
+
         else -> null
     }
 }
@@ -340,22 +346,26 @@ private fun EditorTopBar(
     onClearAll: () -> Unit
 ) {
     TopAppBar(
-        title = { Text("Photo Editor") },
+        title = { },
         navigationIcon = {
-            IconButton(onClick = onPickImage) {
-                Icon(Icons.Default.Add, contentDescription = "Pick Image")
-            }
-        },
-        actions = {
             if (hasBitmap) {
                 IconButton(onClick = onSaveImage) {
                     Icon(
-                        Icons.Default.AddCircle,
+                        Icons.Rounded.CheckCircle,
                         contentDescription = "Save",
-                        tint = MaterialTheme.colorScheme.primary
-                    )
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(30.dp)
+                        )
                 }
             }
+
+        },
+        actions = {
+
+            IconButton(onClick = onPickImage) {
+                Icon(Icons.Default.Add, contentDescription = "Pick Image")
+            }
+
             IconButton(onClick = onUndo, enabled = canUndo) {
                 Icon(
                     Icons.AutoMirrored.Filled.ArrowForward,
