@@ -11,18 +11,24 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.muzamil.photoeditor.export.SaveDestination
+import com.muzamil.photoeditor.state.PhotoEditorState
+import com.muzamil.photoeditor.state.rememberPhotoEditorState
 import com.muzamil.photoeditor.ui.theme.PhotoEditorTheme
-import com.muzamil.photoeditor.viewmodel.PhotoEditorViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlin.math.max
 
 /**
  * The public entry point of the photo editor.
  *
- * Drop-in usage — the editor owns its ViewModel, theme, photo picking, and
+ * Drop-in usage — the editor owns its state, theme, photo picking, and
  * bitmap decoding:
  * ```
  * setContent { PhotoEditor() }
@@ -31,40 +37,56 @@ import kotlin.math.max
  * Every piece is overridable:
  * - [bitmap] — supply an image directly instead of (or in addition to) the
  *   built-in picker; it is (re)loaded whenever the value changes.
+ * - [state] — hoist the state holder via [rememberPhotoEditorState] to
+ *   observe editor state or drive it programmatically.
  * - [onPickImage] — replace the built-in [ActivityResultContracts.PickVisualMedia]
- *   launcher with your own picking flow. Call [PhotoEditorViewModel.loadImage]
+ *   launcher with your own picking flow. Call [PhotoEditorState.loadImage]
  *   with the result.
- * - [viewModel] — hoist the ViewModel to observe editor state or drive it
- *   programmatically.
  * - [saveDestination] — where the save button writes the result:
  *   [SaveDestination.Gallery] (public MediaStore, default) or
  *   [SaveDestination.File] for a path you control, e.g. app-private storage:
  *   `SaveDestination.File(File(context.filesDir, "edits/out.jpg"))`.
+ *
+ * Edits (elements, tool, styles) survive configuration changes and process
+ * death via [PhotoEditorState]'s saver; the picked image uri is persisted
+ * here and re-decoded on restore.
  */
 @Composable
 fun PhotoEditor(
     modifier: Modifier = Modifier,
     bitmap: Bitmap? = null,
-    viewModel: PhotoEditorViewModel = viewModel(),
+    state: PhotoEditorState = rememberPhotoEditorState(),
     onPickImage: (() -> Unit)? = null,
     saveDestination: SaveDestination = SaveDestination.Gallery(),
 ) {
     val context = LocalContext.current
+
+    // The bitmap itself can't be retained across recreation (too large for
+    // saved state) — the uri can. On restore, the LaunchedEffect below
+    // re-decodes it into the (bitmap-less) restored editor state.
+    var pickedImageUri by rememberSaveable { mutableStateOf<Uri?>(null) }
+
     val pickImage = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia()
     ) { uri ->
-        uri?.let { picked ->
-            decodeEditableBitmap(context.contentResolver, picked)?.let(viewModel::loadImage)
-        }
+        if (uri != null) pickedImageUri = uri
     }
 
     LaunchedEffect(bitmap) {
-        bitmap?.let(viewModel::loadImage)
+        bitmap?.let(state::loadImage)
+    }
+
+    LaunchedEffect(pickedImageUri) {
+        val uri = pickedImageUri ?: return@LaunchedEffect
+        val decoded = withContext(Dispatchers.IO) {
+            decodeEditableBitmap(context.contentResolver, uri)
+        }
+        decoded?.let(state::loadImage)
     }
 
     PhotoEditorTheme {
         EditorHostContent(
-            viewModel = viewModel,
+            state = state,
             onPickImage = onPickImage ?: {
                 pickImage.launch(
                     PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)

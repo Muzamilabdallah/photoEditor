@@ -79,7 +79,7 @@ Then add `implementation("com.muzamil.photoeditor:photoeditor")` to your app mod
 
 ### Wire it up
 
-No permissions needed on Android 10+ (the photo picker and MediaStore writes are permission-free; on API 24–28 public gallery saves need `WRITE_EXTERNAL_STORAGE` at runtime — the library declares it with `maxSdkVersion=28`, your app requests it). The `PhotoEditor` composable owns its ViewModel, theme, photo picking, and bitmap decoding — the entire integration is:
+No permissions needed on Android 10+ (the photo picker and MediaStore writes are permission-free; on API 24–28 public gallery saves need `WRITE_EXTERNAL_STORAGE` at runtime — the library declares it with `maxSdkVersion=28`, your app requests it). The `PhotoEditor` composable owns its state, theme, photo picking, and bitmap decoding — the entire integration is:
 
 ```kotlin
 import com.muzamil.photoeditor.ui.PhotoEditor
@@ -97,14 +97,18 @@ class EditorActivity : ComponentActivity() {
 Every piece is overridable when you need more control:
 
 ```kotlin
+val editorState = rememberPhotoEditorState() // hoist state to observe/drive the editor
+                                             // (e.g. editorState.undo(), editorState.canUndo)
 PhotoEditor(
     bitmap = myBitmap,                        // supply an image directly
-    viewModel = myViewModel,                  // hoist state to observe/drive the editor
+    state = editorState,
     onPickImage = { launchMyOwnPicker() },    // replace the built-in photo picker
     saveDestination =                         // where the save button writes:
         SaveDestination.Gallery("MyApp"),     //   Pictures/MyApp via MediaStore, or…
         // SaveDestination.File(File(filesDir, "edits/out.jpg")) — app-private path
 )
 ```
+
+Edits survive rotation and process death: `PhotoEditorState` ships a custom `Saver`, and the picked image uri is persisted and re-decoded on restore.
 
 See `app/src/main/java/com/muzamil/photoeditor/MainActivity.kt` for the working demo.

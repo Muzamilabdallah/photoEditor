@@ -32,7 +32,7 @@ README.md at the repo root documents the consumer-facing install and wiring snip
 
 ### Data flow
 
-`MainActivity` (in `:app`) → `PhotoEditor` (public entry point, `ui/PhotoEditor.kt` — owns theme, default ViewModel, photo picking, and bitmap decoding) → `EditorHostContent` (state adapter, `ui/EditorHost.kt`) → `PhotoEditorScreen` (stateless UI). State is owned by `PhotoEditorViewModel` as a single `MutableStateFlow<EditorState>`. The UI is fully driven by this flow; all mutations go through ViewModel methods. `EditorHostContent` exists solely to collect state with `collectAsStateWithLifecycle` and wire ViewModel methods into the stateless `PhotoEditorScreen`'s callback parameters.
+`MainActivity` (in `:app`) → `PhotoEditor` (public entry point, `ui/PhotoEditor.kt` — owns theme, default state holder, photo picking, and bitmap decoding) → `EditorHostContent` (adapter, `ui/EditorHost.kt`) → `PhotoEditorScreen` (stateless UI). State is owned by `PhotoEditorState` (`state/PhotoEditorState.kt`), a plain Compose state holder created via `rememberPhotoEditorState()` — deliberately **not** an AAC ViewModel (Compose-library idiom, no lifecycle dependency). It exposes `editorState`/`canUndo`/`canRedo`/`saveSuccess` as snapshot state; all mutations go through its methods. Retention across rotation/process death is handled by a custom `Saver` (`state/PhotoEditorStateSaver.kt`) that flattens elements/tool/styles to Bundle-safe primitives — the bitmap is intentionally excluded (too large); `PhotoEditor` persists the picked image *uri* via `rememberSaveable` and re-decodes on restore. Undo history is not retained.
 
 ### Element model (`domain/EditElement.kt`)
 
@@ -52,11 +52,11 @@ This is the key invariant that lets the same coordinates render correctly at any
 
 2. **Export** — `Context.saveEditedImage` in `export/ImageExporter.kt`. This re-draws all elements onto a copy of the background bitmap using `android.graphics.Canvas` (not Compose), sorted by `zIndex`, then writes via MediaStore (API 29+) or legacy `Environment.DIRECTORY_PICTURES` (<29). Ratio coordinates get multiplied by bitmap dimensions here.
 
-**When adding or modifying an element type or its transform, update both rendering paths**, or exported images will diverge from the preview. This also means adding a `when`-branch in `EditorCanvas.kt` (preview), `ImageExporter.kt` (export), and `PhotoEditorViewModel.updateElementTransform` (gesture update).
+**When adding or modifying an element type or its transform, update both rendering paths**, or exported images will diverge from the preview. This also means adding a `when`-branch in `EditorCanvas.kt` (preview), `ImageExporter.kt` (export), and `PhotoEditorState.updateElementTransform` (gesture update) — plus the element's branch in `state/PhotoEditorStateSaver.kt` if its fields change.
 
 ### History (undo/redo)
 
-`history/HistoryManager` keeps snapshots of `List<EditElement>` in two deques, bounded at 50. The ViewModel calls `pushToHistory()` after mutations that should be undoable (add element, delete, finish drawing, clearAll). Transform updates during a drag do **not** push to history — only the terminal action does. History does not track background bitmap or style defaults.
+`history/HistoryManager` keeps snapshots of `List<EditElement>` in two deques, bounded at 50. `PhotoEditorState` calls `pushToHistory()` after mutations that should be undoable (add element, delete, finish drawing, clearAll). Transform updates during a drag do **not** push to history — only the terminal action does. History does not track background bitmap or style defaults.
 
 ### Library module layout (`photoeditor/src/main/java/com/muzamil/photoeditor/`)
 
@@ -65,16 +65,17 @@ This is the key invariant that lets the same coordinates render correctly at any
 - `export/DrawingPathBuilder.kt` — `buildSmoothDrawingPath`, the bezier-smoothing helper shared by preview and export drawing rendering.
 - `geometry/CropGeometry.kt` — the ContentScale.Crop screen↔ratio transform used by `EditorCanvas` for both pointer input and drawing rendering (internal, unit-tested).
 - `history/HistoryManager.kt` — undo/redo deque (internal).
-- `viewmodel/PhotoEditorViewModel.kt` — single ViewModel; sole owner of `MutableStateFlow<EditorState>`.
-- `ui/PhotoEditor.kt` — public `PhotoEditor(...)` entry point: theme + default ViewModel + built-in `PickVisualMedia` picker + safe bitmap decoding (`decodeEditableBitmap`: software allocation — hardware bitmaps would crash the exporter's pixel copy — and ≤4096px downsampling).
+- `state/PhotoEditorState.kt` — public state holder + `rememberPhotoEditorState()`; sole owner of the editor state (snapshot state).
+- `state/PhotoEditorStateSaver.kt` — custom `Saver` (internal): elements/tool/styles → Bundle-safe primitives.
+- `ui/PhotoEditor.kt` — public `PhotoEditor(...)` entry point: theme + default state holder + built-in `PickVisualMedia` picker + safe bitmap decoding (`decodeEditableBitmap`: software allocation — hardware bitmaps would crash the exporter's pixel copy — and ≤4096px downsampling).
 - `ui/PhotoEditorScreen.kt` — top-level `Scaffold`, `EditorTopBar`, `EmptyState`. `internal`.
-- `ui/EditorHost.kt` — `EditorHostContent` state adapter (internal) + the deprecated public `MyEditorScreen` shim that delegates to it.
+- `ui/EditorHost.kt` — `EditorHostContent` adapter (internal): wires `PhotoEditorState` into `PhotoEditorScreen`'s callbacks.
 - `ui/components/` — `EditorCanvas`, `EditorToolbar` (`ToolButton` + `ShapeToolButton`), `TextInputDialog`, `DraggableElement`, `TextElementContent`/`EmojiElementContent`, `ShapeElementContent`. All `internal`.
 - `ui/theme/` — `Color`, `Theme` (`PhotoEditorTheme`), `Type`. Public so consumers can wrap their own UIs.
 
 ### `:app` layout
 
-Just `MainActivity.kt` — owns the `PhotoEditorViewModel`, runs `ActivityResultContracts.PickVisualMedia`, decodes bitmaps, and hands them to `MyEditorScreen`. (The Kotlin package `com.muzamil.photoeditor` is shared with the library — this is fine because the AGP namespaces differ, so R classes don't collide.)
+Just `MainActivity.kt` — `setContent { PhotoEditor() }`. (The Kotlin package `com.muzamil.photoeditor` is shared with the library — this is fine because the AGP namespaces differ, so R classes don't collide.)
 
 ### Permissions
 
@@ -82,4 +83,4 @@ The photo picker (`PickVisualMedia`) and MediaStore writes need no permission on
 
 ### Save destinations
 
-`export/SaveDestination.kt` — public sealed interface consumed by `saveEditedImage`, `PhotoEditorViewModel.saveEditedImage`, and the `PhotoEditor` composable's `saveDestination` param. `Gallery(subFolder)` = MediaStore under `Pictures/` (IS_PENDING protocol on Q+, direct public-dir write below); `File(file)` = exact caller-controlled path, parents auto-created.
+`export/SaveDestination.kt` — public sealed interface consumed by `saveEditedImage`, `PhotoEditorState.saveEditedImage`, and the `PhotoEditor` composable's `saveDestination` param. `Gallery(subFolder)` = MediaStore under `Pictures/` (IS_PENDING protocol on Q+, direct public-dir write below); `File(file)` = exact caller-controlled path, parents auto-created.
