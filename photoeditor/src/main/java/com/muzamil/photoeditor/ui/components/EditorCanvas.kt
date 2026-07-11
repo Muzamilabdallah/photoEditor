@@ -20,7 +20,10 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.asComposePath
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
@@ -29,6 +32,8 @@ import androidx.compose.ui.unit.IntSize
 import com.muzamil.photoeditor.domain.EditElement
 import com.muzamil.photoeditor.domain.EditorState
 import com.muzamil.photoeditor.domain.EditorTool
+import com.muzamil.photoeditor.export.buildSmoothDrawingPath
+import com.muzamil.photoeditor.geometry.CropGeometry
 
 /**
  * The main editing surface. Shows the source bitmap, freehand drawings, and
@@ -43,7 +48,7 @@ internal fun EditorCanvas(
     selectedElementId: String?,
     onCanvasTap: (Offset) -> Unit,
     onStartDrawing: (Offset) -> Unit,
-    onContinueDrawing: (Offset) -> Unit,
+    onContinueDrawing: (List<Offset>) -> Unit,
     onFinishDrawing: () -> Unit,
     onElementTap: (String) -> Unit,
     onUpdateElement: (String, Float, Float, Float, Float) -> Unit,
@@ -68,17 +73,18 @@ internal fun EditorCanvas(
 //        onScaleFactorChanged(scaleFactor)
 //    }
 
-    // Pointer events on the drawing Canvas arrive in the inner Box's local space,
-    // which is sized to exactly the fitted image — so coords are already
-    // 0.displayWidth × 0.displayHeight, no letterbox subtraction needed.
-    fun screenToBitmapCoordinates(screenOffset: Offset): Offset =
-        Offset(screenOffset.x / scaleFactor, screenOffset.y / scaleFactor)
-
-    fun screenToRatio(screenOffset: Offset): Offset {
-        val b = bitmap ?: return Offset.Zero
-        val bmp = screenToBitmapCoordinates(screenOffset)
-        return Offset(bmp.x / b.width, bmp.y / b.height)
+    // The image is displayed with ContentScale.Crop; CropGeometry is the single
+    // source of truth for the screen↔ratio mapping, shared by pointer input and
+    // the drawing renderer below. Do NOT use scaleFactor (minOf/Fit) for this.
+    val cropGeometry = remember(bitmap, canvasSize) {
+        CropGeometry(
+            bitmapWidth = bitmap?.width?.toFloat() ?: 0f,
+            bitmapHeight = bitmap?.height?.toFloat() ?: 0f,
+            containerWidth = canvasSize.width,
+            containerHeight = canvasSize.height,
+        )
     }
+    fun screenToRatio(screenOffset: Offset): Offset = cropGeometry.screenToRatio(screenOffset)
 
     Box(
         modifier = modifier
@@ -123,48 +129,39 @@ internal fun EditorCanvas(
                                     onStartDrawing(screenToRatio(offset))
                                 },
                                 onDrag = { change, _ ->
-                                    onContinueDrawing(screenToRatio(change.position))
+                                    // Include the high-frequency samples the input
+                                    // system batched between frames — one drag event
+                                    // per frame alone is too sparse for smooth curves.
+                                    val points = buildList {
+                                        change.historical.forEach { add(screenToRatio(it.position)) }
+                                        add(screenToRatio(change.position))
+                                    }
+                                    onContinueDrawing(points)
                                 },
                                 onDragEnd = { onFinishDrawing() },
                                 onDragCancel = { onFinishDrawing() }
                             )
                         }
                     }) {
-                val bmp = bitmap ?: return@Canvas
-                val bmpW = bmp.width.toFloat()
-                val bmpH = bmp.height.toFloat()
-
-                // Crop scale = maxOf instead of minOf
-                val scaleX = size.width / bmpW
-                val scaleY = size.height / bmpH
-                val scale = maxOf(scaleX, scaleY)
-
-                // Crop offsets (how much of the bitmap is hidden on each side)
-                val cropOffsetX = (bmpW * scale - size.width) / 2f
-                val cropOffsetY = (bmpH * scale - size.height) / 2f
+                if (!cropGeometry.isValid) return@Canvas
 
                 elements.elements.forEach { element ->
-                    if (element is EditElement.Drawing && element.points.size > 1) {
-                        for (i in 0 until element.points.size - 1) {
-                            val p1 = element.points[i]
-                            val p2 = element.points[i + 1]
-                            // Apply crop offset when mapping normalized → screen coords
-                            val start = Offset(
-                                p1.x * bmpW * scale - cropOffsetX,
-                                p1.y * bmpH * scale - cropOffsetY
+                    if (element is EditElement.Drawing && element.points.isNotEmpty()) {
+                        // Same smoothing helper as the exporter; CropGeometry maps
+                        // normalized → screen coords (crop scale + offsets).
+                        val path = buildSmoothDrawingPath(
+                            element.points,
+                            cropGeometry::ratioToScreen,
+                        )
+                        drawPath(
+                            path = path.asComposePath(),
+                            color = element.color,
+                            style = Stroke(
+                                width = element.strokeWidth * cropGeometry.scale,
+                                cap = StrokeCap.Round,
+                                join = StrokeJoin.Round
                             )
-                            val end = Offset(
-                                p2.x * bmpW * scale - cropOffsetX,
-                                p2.y * bmpH * scale - cropOffsetY
-                            )
-                            drawLine(
-                                color = element.color,
-                                start = start,
-                                end = end,
-                                strokeWidth = element.strokeWidth * scale,
-                                cap = StrokeCap.Round
-                            )
-                        }
+                        )
                     }
                 }
             }

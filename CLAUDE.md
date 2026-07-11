@@ -7,7 +7,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 WhatsApp-style photo editor delivered as a reusable Android library (`:photoeditor`) plus a thin demo app (`:app`). Built with Jetpack Compose. Kotlin 2.0.21, AGP 8.13.0, compileSdk 36, minSdk 24, Java 11 toolchain, Compose BOM 2024.09.00.
 
 - `:photoeditor` — the library. Gradle namespace `com.muzamil.photoeditor.lib` (intentionally distinct from `:app` so AGP doesn't merge R classes), Kotlin source under `com.muzamil.photoeditor.*` for a clean public API.
-- `:app` — demo consumer. Hosts `MainActivity`, runs the photo picker, and embeds the library's editor screen. Has no editor code of its own.
+- `:app` — demo consumer. Hosts `MainActivity`, which is just `setContent { PhotoEditor() }`. Has no editor code of its own.
+
+Publishing: `:photoeditor` applies `maven-publish` (release variant + sources jar, coordinates `com.github.Muzamilabdallah:photoeditor`). `jitpack.yml` at the repo root builds it on JitPack with JDK 17 via `:photoeditor:publishToMavenLocal`. Validate locally with `./gradlew :photoeditor:publishToMavenLocal`.
 
 ## Common commands
 
@@ -16,7 +18,7 @@ All commands use the Gradle wrapper at the repo root.
 - Build everything: `./gradlew :photoeditor:assembleDebug :app:assembleDebug`
 - Library only: `./gradlew :photoeditor:assembleDebug`
 - Install demo on device/emulator: `./gradlew :app:installDebug`
-- Unit tests (JVM): `./gradlew :app:testDebugUnitTest`
+- Unit tests (JVM): `./gradlew :photoeditor:testDebugUnitTest` (library — the real test suite) and `./gradlew :app:testDebugUnitTest`
 - Instrumented tests (requires device/emulator): `./gradlew :app:connectedDebugAndroidTest`
 - Run a single unit test: `./gradlew :app:testDebugUnitTest --tests "com.muzamil.photoeditor.ExampleUnitTest.addition_isCorrect"`
 - Lint: `./gradlew :photoeditor:lintDebug :app:lintDebug` (reports under each module's `build/reports/`)
@@ -30,7 +32,7 @@ README.md at the repo root documents the consumer-facing install and wiring snip
 
 ### Data flow
 
-`MainActivity` (in `:app`) → `MyEditorScreen` (state adapter, in library `ui/EditorHost.kt`) → `PhotoEditorScreen` (stateless UI). State is owned by `PhotoEditorViewModel` as a single `MutableStateFlow<EditorState>`. The UI is fully driven by this flow; all mutations go through ViewModel methods. `MyEditorScreen` exists solely to collect state with `collectAsStateWithLifecycle` and wire ViewModel methods into the stateless `PhotoEditorScreen`'s callback parameters.
+`MainActivity` (in `:app`) → `PhotoEditor` (public entry point, `ui/PhotoEditor.kt` — owns theme, default ViewModel, photo picking, and bitmap decoding) → `EditorHostContent` (state adapter, `ui/EditorHost.kt`) → `PhotoEditorScreen` (stateless UI). State is owned by `PhotoEditorViewModel` as a single `MutableStateFlow<EditorState>`. The UI is fully driven by this flow; all mutations go through ViewModel methods. `EditorHostContent` exists solely to collect state with `collectAsStateWithLifecycle` and wire ViewModel methods into the stateless `PhotoEditorScreen`'s callback parameters.
 
 ### Element model (`domain/EditElement.kt`)
 
@@ -60,10 +62,13 @@ This is the key invariant that lets the same coordinates render correctly at any
 
 - `domain/EditElement.kt` — sealed `EditElement` (Text/Emoji/Drawing/Shape), `ShapeKind`, `EditorState`, `EditorTool`. Pure data.
 - `export/ImageExporter.kt` — `saveEditedImage` extension on `Context`. The bitmap-side rendering twin of `EditorCanvas`.
+- `export/DrawingPathBuilder.kt` — `buildSmoothDrawingPath`, the bezier-smoothing helper shared by preview and export drawing rendering.
+- `geometry/CropGeometry.kt` — the ContentScale.Crop screen↔ratio transform used by `EditorCanvas` for both pointer input and drawing rendering (internal, unit-tested).
 - `history/HistoryManager.kt` — undo/redo deque (internal).
 - `viewmodel/PhotoEditorViewModel.kt` — single ViewModel; sole owner of `MutableStateFlow<EditorState>`.
-- `ui/PhotoEditorScreen.kt` — top-level `Scaffold`, `EditorTopBar`, `EmptyState`. Currently `internal` — public `PhotoEditor(...)` entry point is still to come.
-- `ui/EditorHost.kt` — `MyEditorScreen` state adapter (currently the public entry point consumers call; to be replaced by the `PhotoEditor` composable).
+- `ui/PhotoEditor.kt` — public `PhotoEditor(...)` entry point: theme + default ViewModel + built-in `PickVisualMedia` picker + safe bitmap decoding (`decodeEditableBitmap`: software allocation — hardware bitmaps would crash the exporter's pixel copy — and ≤4096px downsampling).
+- `ui/PhotoEditorScreen.kt` — top-level `Scaffold`, `EditorTopBar`, `EmptyState`. `internal`.
+- `ui/EditorHost.kt` — `EditorHostContent` state adapter (internal) + the deprecated public `MyEditorScreen` shim that delegates to it.
 - `ui/components/` — `EditorCanvas`, `EditorToolbar` (`ToolButton` + `ShapeToolButton`), `TextInputDialog`, `DraggableElement`, `TextElementContent`/`EmojiElementContent`, `ShapeElementContent`. All `internal`.
 - `ui/theme/` — `Color`, `Theme` (`PhotoEditorTheme`), `Type`. Public so consumers can wrap their own UIs.
 
@@ -73,4 +78,8 @@ Just `MainActivity.kt` — owns the `PhotoEditorViewModel`, runs `ActivityResult
 
 ### Permissions
 
-`READ_MEDIA_IMAGES` is declared by the **library** manifest (`photoeditor/src/main/AndroidManifest.xml`) and merged into any consumer app — `:app`'s manifest no longer declares it. The photo picker (`PickVisualMedia`) doesn't require runtime permission on modern Android.
+The photo picker (`PickVisualMedia`) and MediaStore writes need no permission on API 29+, so the library declares none for them (`READ_MEDIA_IMAGES` was deliberately removed — Play flags it and nothing here needs it). The **library** manifest (`photoeditor/src/main/AndroidManifest.xml`) declares only `WRITE_EXTERNAL_STORAGE` with `maxSdkVersion=28`, used by `SaveDestination.Gallery` legacy public-directory writes on API 24–28; requesting it at runtime there is the consumer's job. `SaveDestination.File` (app-private paths) needs no permission.
+
+### Save destinations
+
+`export/SaveDestination.kt` — public sealed interface consumed by `saveEditedImage`, `PhotoEditorViewModel.saveEditedImage`, and the `PhotoEditor` composable's `saveDestination` param. `Gallery(subFolder)` = MediaStore under `Pictures/` (IS_PENDING protocol on Q+, direct public-dir write below); `File(file)` = exact caller-controlled path, parents auto-created.

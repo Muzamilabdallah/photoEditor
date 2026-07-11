@@ -82,7 +82,7 @@ internal fun PhotoEditorScreen(
     onAddEmoji: (String) -> Unit,
     onAddShape: (ShapeKind) -> Unit,
     onStartDrawing: (Offset) -> Unit,
-    onContinueDrawing: (Offset) -> Unit,
+    onContinueDrawing: (List<Offset>) -> Unit,
     onFinishDrawing: () -> Unit,
     onElementSelected: (String) -> Unit,
     onDeselect: () -> Unit,

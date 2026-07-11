@@ -2,6 +2,7 @@ plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+    `maven-publish`
 }
 
 android {
@@ -37,6 +38,28 @@ android {
     buildFeatures {
         compose = true
     }
+
+    publishing {
+        singleVariant("release") {
+            withSourcesJar()
+        }
+    }
+}
+
+// JitPack consumes this via `com.github.Muzamilabdallah.photoEditor:photoeditor:<tag>`.
+// JitPack overrides group/version from the git tag, but they're set here so
+// `publishToMavenLocal` produces sensible coordinates for local testing too.
+publishing {
+    publications {
+        register<MavenPublication>("release") {
+            groupId = "com.github.Muzamilabdallah"
+            artifactId = "photoeditor"
+            version = "1.0.0"
+            afterEvaluate {
+                from(components["release"])
+            }
+        }
+    }
 }
 
 dependencies {
@@ -49,8 +72,11 @@ dependencies {
     api(libs.androidx.lifecycle.runtime.compose)
 
     implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.ui.unit)
     debugImplementation(libs.androidx.compose.ui.tooling)
+
+    testImplementation(libs.junit)
 }

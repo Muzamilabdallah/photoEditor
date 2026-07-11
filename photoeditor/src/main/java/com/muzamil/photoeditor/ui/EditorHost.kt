@@ -2,12 +2,37 @@ package com.muzamil.photoeditor.ui
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.muzamil.photoeditor.export.SaveDestination
 import com.muzamil.photoeditor.viewmodel.PhotoEditorViewModel
 
+@Deprecated(
+    message = "Use the PhotoEditor composable instead — it wires up the theme, " +
+        "ViewModel, and photo picking for you.",
+    replaceWith = ReplaceWith(
+        "PhotoEditor(viewModel = viewModel, onPickImage = onPickImage)",
+        "com.muzamil.photoeditor.ui.PhotoEditor",
+    ),
+)
 @Composable
 fun MyEditorScreen(viewModel: PhotoEditorViewModel, onPickImage: () -> Unit) {
+    EditorHostContent(viewModel = viewModel, onPickImage = onPickImage)
+}
+
+/**
+ * State adapter between [PhotoEditorViewModel] and the stateless
+ * [PhotoEditorScreen]: collects the state flows and wires ViewModel methods
+ * into the screen's callback parameters.
+ */
+@Composable
+internal fun EditorHostContent(
+    viewModel: PhotoEditorViewModel,
+    onPickImage: () -> Unit,
+    modifier: Modifier = Modifier,
+    saveDestination: SaveDestination = SaveDestination.Gallery(),
+) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val canUndo by viewModel.canUndo.collectAsStateWithLifecycle()
     val canRedo by viewModel.canRedo.collectAsStateWithLifecycle()
@@ -38,7 +63,7 @@ fun MyEditorScreen(viewModel: PhotoEditorViewModel, onPickImage: () -> Unit) {
         onClearAll = viewModel::clearAll,
         onPickImage = onPickImage,
         onSaveImage = {
-            viewModel.saveEditedImage(context = context)
+            viewModel.saveEditedImage(context = context, destination = saveDestination)
         },
         onContainerSizeChanged = viewModel::setContainerSize,
         onUpdateTextDefault = { color, size -> viewModel.updateTextStyle(color, size) },
@@ -55,6 +80,7 @@ fun MyEditorScreen(viewModel: PhotoEditorViewModel, onPickImage: () -> Unit) {
         },
         onUpdateSelectedShapeStyle = { color, stroke, filled ->
             viewModel.updateSelectedShapeStyle(color, stroke, filled)
-        }
+        },
+        modifier = modifier,
     )
 }

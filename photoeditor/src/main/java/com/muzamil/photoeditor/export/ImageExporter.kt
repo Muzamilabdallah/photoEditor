@@ -11,6 +11,7 @@ import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import android.util.TypedValue
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntSize
@@ -21,7 +22,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
-import java.io.OutputStream
+import java.io.IOException
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.max
@@ -53,6 +54,11 @@ import kotlin.math.sin
  * @param containerSize     Preview container size in **device pixels** (from onSizeChanged).
  * @param quality           JPEG compression quality (0–100).
  * @param format            Output bitmap compress format.
+ * @param destination       Where to write the result: [SaveDestination.Gallery]
+ *                          (public, default) or [SaveDestination.File] (a path
+ *                          the caller controls, e.g. app-private storage).
+ * @return the saved image's location: a `content://` uri string for
+ *         MediaStore saves, an absolute file path otherwise.
  */
 suspend fun Context.saveEditedImage(
     backgroundBitmap: Bitmap,
@@ -60,6 +66,7 @@ suspend fun Context.saveEditedImage(
     containerSize: IntSize,
     quality: Int = 95,
     format: Bitmap.CompressFormat = Bitmap.CompressFormat.JPEG,
+    destination: SaveDestination = SaveDestination.Gallery(),
 ): Result<String> = withContext(Dispatchers.IO) {
     runCatching {
         val resultBitmap = backgroundBitmap.copy(Bitmap.Config.ARGB_8888, true)
@@ -145,7 +152,7 @@ suspend fun Context.saveEditedImage(
                 // Drawing points are stored as bitmap-normalised ratios (0–1
                 // spans the full bitmap), so no crop offset is needed here.
                 is EditElement.Drawing -> {
-                    if (element.points.size < 2) return@forEach
+                    if (element.points.isEmpty()) return@forEach
                     val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                         color       = element.color.toArgb()
                         strokeWidth = element.strokeWidth
@@ -153,15 +160,10 @@ suspend fun Context.saveEditedImage(
                         strokeCap   = Paint.Cap.ROUND
                         strokeJoin  = Paint.Join.ROUND
                     }
-                    for (i in 0 until element.points.size - 1) {
-                        val s = element.points[i]
-                        val e = element.points[i + 1]
-                        canvas.drawLine(
-                            s.x * bitmapW, s.y * bitmapH,
-                            e.x * bitmapW, e.y * bitmapH,
-                            paint,
-                        )
+                    val path = buildSmoothDrawingPath(element.points) { p ->
+                        Offset(p.x * bitmapW, p.y * bitmapH)
                     }
+                    canvas.drawPath(path, paint)
                 }
 
                 // ── Shape ─────────────────────────────────────────────────────
@@ -201,32 +203,76 @@ suspend fun Context.saveEditedImage(
         }
 
         // ── Save to storage ──────────────────────────────────────────────────
-        val fileName = "edited_image_${System.currentTimeMillis()}.jpg"
-        val outputStream: OutputStream?
-        val filePath: String
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            val contentValues = ContentValues().apply {
-                put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
-                put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
-                put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_PICTURES)
-            }
-            val uri = contentResolver.insert(
-                MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                contentValues,
-            )
-            outputStream = uri?.let { contentResolver.openOutputStream(it) }
-            filePath     = uri?.toString() ?: ""
-        } else {
-            val dir   = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES)
-            val file  = File(dir, fileName)
-            outputStream = FileOutputStream(file)
-            filePath     = file.absolutePath
+        val (extension, mimeType) = when (format) {
+            Bitmap.CompressFormat.PNG -> "png" to "image/png"
+            Bitmap.CompressFormat.JPEG -> "jpg" to "image/jpeg"
+            else -> "webp" to "image/webp"
         }
 
-        outputStream?.use { resultBitmap.compress(format, quality, it) }
-        resultBitmap.recycle()
+        val filePath = when (destination) {
+            is SaveDestination.File -> {
+                val file = destination.file
+                file.parentFile?.let { parent ->
+                    if (!parent.exists() && !parent.mkdirs()) {
+                        throw IOException("Cannot create directory $parent")
+                    }
+                }
+                FileOutputStream(file).use { resultBitmap.compress(format, quality, it) }
+                file.absolutePath
+            }
 
+            is SaveDestination.Gallery -> {
+                val fileName = "edited_image_${System.currentTimeMillis()}.$extension"
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    val relativePath = destination.subFolder
+                        ?.let { "${Environment.DIRECTORY_PICTURES}/$it" }
+                        ?: Environment.DIRECTORY_PICTURES
+                    val contentValues = ContentValues().apply {
+                        put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                        put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
+                        put(MediaStore.MediaColumns.RELATIVE_PATH, relativePath)
+                        put(MediaStore.MediaColumns.IS_PENDING, 1)
+                    }
+                    val uri = contentResolver.insert(
+                        MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                        contentValues,
+                    ) ?: throw IOException("MediaStore insert failed — cannot create image entry")
+
+                    try {
+                        val stream = contentResolver.openOutputStream(uri)
+                            ?: throw IOException("Cannot open output stream for $uri")
+                        stream.use { resultBitmap.compress(format, quality, it) }
+                        // Make the entry visible to other apps only once fully written.
+                        contentResolver.update(
+                            uri,
+                            ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) },
+                            null,
+                            null,
+                        )
+                    } catch (e: Exception) {
+                        // Don't leave an orphaned pending entry behind.
+                        contentResolver.delete(uri, null, null)
+                        throw e
+                    }
+                    uri.toString()
+                } else {
+                    // Direct write to the public directory — needs
+                    // WRITE_EXTERNAL_STORAGE held at runtime on API <29.
+                    val base = Environment.getExternalStoragePublicDirectory(
+                        Environment.DIRECTORY_PICTURES
+                    )
+                    val dir = destination.subFolder?.let { File(base, it) } ?: base
+                    if (!dir.exists() && !dir.mkdirs()) {
+                        throw IOException("Cannot create directory $dir")
+                    }
+                    val file = File(dir, fileName)
+                    FileOutputStream(file).use { resultBitmap.compress(format, quality, it) }
+                    file.absolutePath
+                }
+            }
+        }
+
+        resultBitmap.recycle()
         filePath
     }
 }

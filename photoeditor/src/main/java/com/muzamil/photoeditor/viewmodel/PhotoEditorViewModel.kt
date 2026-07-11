@@ -15,6 +15,7 @@ import com.muzamil.photoeditor.domain.EditElement
 import com.muzamil.photoeditor.domain.EditorState
 import com.muzamil.photoeditor.domain.EditorTool
 import com.muzamil.photoeditor.domain.ShapeKind
+import com.muzamil.photoeditor.export.SaveDestination
 import com.muzamil.photoeditor.export.saveEditedImage
 import com.muzamil.photoeditor.history.HistoryManager
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -193,10 +194,16 @@ class PhotoEditorViewModel : ViewModel() {
         }
     }
 
-    fun continueDrawing(point: Offset) {
+    /**
+     * Appends a batch of points to the in-progress drawing. Batched (one call
+     * per drag event, including historical samples) so each gesture event
+     * costs a single state update regardless of how many points it carries.
+     */
+    fun continueDrawing(points: List<Offset>) {
+        if (points.isEmpty()) return
         _state.update { s ->
             val last = s.elements.lastOrNull() as? EditElement.Drawing ?: return@update s
-            s.copy(elements = s.elements.dropLast(1) + last.copy(points = last.points + point))
+            s.copy(elements = s.elements.dropLast(1) + last.copy(points = last.points + points))
         }
     }
 
@@ -318,6 +325,7 @@ class PhotoEditorViewModel : ViewModel() {
         context: Context,
         quality: Int = 95,
         format: Bitmap.CompressFormat = Bitmap.CompressFormat.JPEG,
+        destination: SaveDestination = SaveDestination.Gallery(),
     ) {
         val bitmap = _state.value.backgroundBitmap
         val containerSize = _containerSize.value
@@ -340,6 +348,7 @@ class PhotoEditorViewModel : ViewModel() {
                 containerSize = containerSize,   // ← replaces previewScaleFactor
                 quality = quality,
                 format = format,
+                destination = destination,
             ).fold(
                 onSuccess = { path ->
                     _state.update { it.copy(isLoading = false) }

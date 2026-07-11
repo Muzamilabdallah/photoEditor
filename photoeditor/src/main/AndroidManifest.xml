@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Required so the host app can decode bitmaps from the photo picker URI. -->
-    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <!-- Only needed for SaveDestination.Gallery on API 24–28, where the public
+         Pictures directory is written directly (no MediaStore RELATIVE_PATH).
+         Ignored on 29+. The photo picker itself needs no permission. -->
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
 </manifest>

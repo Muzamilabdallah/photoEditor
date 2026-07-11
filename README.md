@@ -24,9 +24,31 @@ Launch "Photo Editor" from the app drawer, tap the **+** icon to pick an image, 
 
 ### Use the `:photoeditor` library in your own project
 
-Until a published artifact is available (JitPack — see **Roadmap** below), the library can be consumed as a local Gradle module. Two options:
+**Option 1 — JitPack (recommended)**
 
-**Option A — copy the module into your repo**
+Add the JitPack repository to your `settings.gradle.kts`:
+
+```kotlin
+dependencyResolutionManagement {
+    repositories {
+        google()
+        mavenCentral()
+        maven("https://jitpack.io")
+    }
+}
+```
+
+Then add the dependency to your app module (see [jitpack.io/#Muzamilabdallah/photoEditor](https://jitpack.io/#Muzamilabdallah/photoEditor) for the latest tag):
+
+```kotlin
+dependencies {
+    implementation("com.github.Muzamilabdallah.photoEditor:photoeditor:<tag>")
+}
+```
+
+Alternatively, the library can be consumed as a local Gradle module. Two options:
+
+**Option 2 — copy the module into your repo**
 
 1. Copy the `photoeditor/` directory into your project root.
 2. In your `settings.gradle.kts`:
@@ -40,7 +62,7 @@ Until a published artifact is available (JitPack — see **Roadmap** below), the
    }
    ```
 
-**Option B — include the repo as a composite build**
+**Option 3 — include the repo as a composite build**
 
 In your consumer project's `settings.gradle.kts`:
 
@@ -57,30 +79,32 @@ Then add `implementation("com.muzamil.photoeditor:photoeditor")` to your app mod
 
 ### Wire it up
 
-The library contributes `READ_MEDIA_IMAGES` via manifest merging, so your host app doesn't need to declare it. From your `Activity`:
+No permissions needed on Android 10+ (the photo picker and MediaStore writes are permission-free; on API 24–28 public gallery saves need `WRITE_EXTERNAL_STORAGE` at runtime — the library declares it with `maxSdkVersion=28`, your app requests it). The `PhotoEditor` composable owns its ViewModel, theme, photo picking, and bitmap decoding — the entire integration is:
 
 ```kotlin
-import com.muzamil.photoeditor.ui.MyEditorScreen
-import com.muzamil.photoeditor.ui.theme.PhotoEditorTheme
-import com.muzamil.photoeditor.viewmodel.PhotoEditorViewModel
+import com.muzamil.photoeditor.ui.PhotoEditor
 
 class EditorActivity : ComponentActivity() {
-    private val viewModel: PhotoEditorViewModel by viewModels()
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            PhotoEditorTheme {
-                MyEditorScreen(viewModel = viewModel) {
-                    /* your photo-picker launch here — call viewModel.loadImage(bitmap) when picked */
-                }
-            }
+            PhotoEditor()
         }
     }
 }
 ```
 
-See `app/src/main/java/com/muzamil/photoeditor/MainActivity.kt` for a full working example with `ActivityResultContracts.PickVisualMedia`.
+Every piece is overridable when you need more control:
 
-### Roadmap
+```kotlin
+PhotoEditor(
+    bitmap = myBitmap,                        // supply an image directly
+    viewModel = myViewModel,                  // hoist state to observe/drive the editor
+    onPickImage = { launchMyOwnPicker() },    // replace the built-in photo picker
+    saveDestination =                         // where the save button writes:
+        SaveDestination.Gallery("MyApp"),     //   Pictures/MyApp via MediaStore, or…
+        // SaveDestination.File(File(filesDir, "edits/out.jpg")) — app-private path
+)
+```
 
-A published JitPack artifact (`com.github.<user>:photoEditor2:<tag>`) is planned — once available, installation will reduce to adding the JitPack repo and a single `implementation` line.
+See `app/src/main/java/com/muzamil/photoeditor/MainActivity.kt` for the working demo.
