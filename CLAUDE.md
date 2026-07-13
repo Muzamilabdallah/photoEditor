@@ -20,7 +20,7 @@ All commands use the Gradle wrapper at the repo root.
 - Install demo on device/emulator: `./gradlew :app:installDebug`
 - Unit tests (JVM): `./gradlew :photoeditor:testDebugUnitTest` (library — the real test suite) and `./gradlew :app:testDebugUnitTest`
 - Instrumented tests (requires device/emulator): `./gradlew :app:connectedDebugAndroidTest`
-- Run a single unit test: `./gradlew :app:testDebugUnitTest --tests "com.muzamil.photoeditor.ExampleUnitTest.addition_isCorrect"`
+- Run a single unit test class: `./gradlew :photoeditor:testDebugUnitTest --tests "com.muzamil.photoeditor.geometry.CropGeometryTest"` (append `.methodName` for one test)
 - Lint: `./gradlew :photoeditor:lintDebug :app:lintDebug` (reports under each module's `build/reports/`)
 - Clean: `./gradlew clean`
 
@@ -48,7 +48,7 @@ This is the key invariant that lets the same coordinates render correctly at any
 
 ### Rendering paths (two places, must stay in sync)
 
-1. **On-screen preview** — `ui/components/EditorCanvas.kt` does all the gesture handling and ratio↔pixel math; `DraggableElement` wraps text/emoji/shape in a `transformable` modifier that does rotation-compensated pan math (see `ui/components/DraggableElement.kt` — the trig affects drag feel directly). `Shape` renders via `ShapeElementContent.kt`, sizing itself to `widthRatio * parent` × `heightRatio * parent`. Drawings are rendered inside `EditorCanvas`'s `Canvas`, multiplying ratios by `bitmap.width/height` and then by `scaleFactor` to land in screen space.
+1. **On-screen preview** — `ui/components/EditorCanvas.kt` does all the gesture handling and ratio↔pixel math. The image is displayed with `ContentScale.Crop`, and `CropGeometry` is the single source of truth for the screen↔ratio mapping — pointer input and drawing rendering both go through it (do **not** use the `minOf`-based `scaleFactor` for position math; it only scales stroke widths and text/emoji sizes). `DraggableElement` wraps text/emoji/shape in a `transformable` modifier that does rotation-compensated pan math (see `ui/components/DraggableElement.kt` — the trig affects drag feel directly); a tap on empty canvas (any non-Drawing tool) deselects. `Shape` renders via `ShapeElementContent.kt`, sizing itself to `widthRatio * parent` × `heightRatio * parent`.
 
 2. **Export** — `Context.saveEditedImage` in `export/ImageExporter.kt`. This re-draws all elements onto a copy of the background bitmap using `android.graphics.Canvas` (not Compose), sorted by `zIndex`, then writes via MediaStore (API 29+) or legacy `Environment.DIRECTORY_PICTURES` (<29). Ratio coordinates get multiplied by bitmap dimensions here.
 
