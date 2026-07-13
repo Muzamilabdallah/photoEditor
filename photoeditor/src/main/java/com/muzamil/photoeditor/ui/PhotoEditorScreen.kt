@@ -167,7 +167,7 @@ internal fun PhotoEditorScreen(
                     elements = editorState,
                     currentTool = editorState.currentTool,
                     selectedElementId = editorState.selectedElementId,
-                    onCanvasTap = { /* future: place text at tapped offset */ },
+                    onCanvasTap = { onDeselect() },
                     onStartDrawing = onStartDrawing,
                     onContinueDrawing = onContinueDrawing,
                     onFinishDrawing = onFinishDrawing,

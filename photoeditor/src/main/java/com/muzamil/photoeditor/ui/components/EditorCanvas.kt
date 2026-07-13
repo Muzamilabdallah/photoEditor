@@ -5,6 +5,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -141,6 +142,12 @@ internal fun EditorCanvas(
                                 onDragEnd = { onFinishDrawing() },
                                 onDragCancel = { onFinishDrawing() }
                             )
+                        } else {
+                            // Taps on elements are consumed by DraggableElement above;
+                            // only taps on empty canvas reach this layer.
+                            detectTapGestures { offset ->
+                                onCanvasTap(screenToRatio(offset))
+                            }
                         }
                     }) {
                 if (!cropGeometry.isValid) return@Canvas

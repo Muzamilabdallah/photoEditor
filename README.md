@@ -111,4 +111,27 @@ PhotoEditor(
 
 Edits survive rotation and process death: `PhotoEditorState` ships a custom `Saver`, and the picked image uri is persisted and re-decoded on restore.
 
+### Bring your own UI
+
+If the built-in toolbar and top bar don't match your app's design, skip `PhotoEditor` entirely and use `PhotoEditorCanvas` — the editing surface alone. It renders the image and elements and handles all editing gestures (select, deselect, drag/rotate/scale, freehand drawing); everything else is driven through `PhotoEditorState` from your own controls:
+
+```kotlin
+val state = rememberPhotoEditorState()
+val context = LocalContext.current
+
+Column {
+    PhotoEditorCanvas(state, Modifier.weight(1f))
+    MyToolbar(
+        onAddText = { state.addText("Hello") },
+        onDraw = { state.selectTool(EditorTool.Drawing) },
+        onShape = { state.addShape(ShapeKind.Circle) },
+        onUndo = { state.undo() },       // observe state.canUndo / state.canRedo
+        onDelete = { state.deleteSelectedElement() },
+        onSave = { state.saveEditedImage(context) },
+    )
+}
+```
+
+Load images with `state.loadImage(bitmap)`. If the image comes from a uri, decode it with `decodeEditableBitmap(contentResolver, uri)` (on a background dispatcher) — the editor needs a software bitmap, and this also downsamples oversized images safely.
+
 See `app/src/main/java/com/muzamil/photoeditor/MainActivity.kt` for the working demo.

@@ -50,6 +50,9 @@ import kotlin.math.max
  * Edits (elements, tool, styles) survive configuration changes and process
  * death via [PhotoEditorState]'s saver; the picked image uri is persisted
  * here and re-decoded on restore.
+ *
+ * To build a fully custom UI instead, use [PhotoEditorCanvas] — the editing
+ * surface alone — and drive [PhotoEditorState] from your own controls.
  */
 @Composable
 fun PhotoEditor(
@@ -107,11 +110,16 @@ private const val MAX_DECODE_DIMENSION = 4096
 
 /**
  * Decodes [uri] into a software, editable bitmap, downsampling anything larger
- * than [MAX_DECODE_DIMENSION]. Software allocation is required: the exporter
- * copies the bitmap's pixels, which hardware bitmaps don't allow.
+ * than 4096px on its largest edge. Software allocation is required: the
+ * exporter copies the bitmap's pixels, which hardware bitmaps don't allow.
  * Returns null if the uri can't be decoded.
+ *
+ * Use this to prepare images for [PhotoEditorState.loadImage] when providing
+ * your own picking flow (e.g. with [PhotoEditorCanvas]) — bitmaps decoded any
+ * other way may be hardware-backed and crash the exporter. Performs blocking
+ * IO; call from a background dispatcher.
  */
-internal fun decodeEditableBitmap(contentResolver: ContentResolver, uri: Uri): Bitmap? = try {
+fun decodeEditableBitmap(contentResolver: ContentResolver, uri: Uri): Bitmap? = try {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
         val source = ImageDecoder.createSource(contentResolver, uri)
         ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
