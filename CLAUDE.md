@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 WhatsApp-style photo editor delivered as a reusable Android library (`:photoeditor`) plus a thin demo app (`:app`). Built with Jetpack Compose. Kotlin 2.0.21, AGP 8.13.0, compileSdk 36, minSdk 24, Java 11 toolchain, Compose BOM 2024.09.00.
 
 - `:photoeditor` — the library. Gradle namespace `com.muzamil.photoeditor.lib` (intentionally distinct from `:app` so AGP doesn't merge R classes), Kotlin source under `com.muzamil.photoeditor.*` for a clean public API.
-- `:app` — demo consumer. Hosts `MainActivity`, which is just `setContent { PhotoEditor() }`. Has no editor code of its own.
+- `:app` — demo consumer. Hosts `MainActivity`: the system photo picker (`PickVisualMedia`) + `decodeEditableBitmap` + `PhotoEditor(state, onPickImage)`. Image sourcing deliberately lives here, not in the library.
 
 Publishing: `:photoeditor` applies `maven-publish` (release variant + sources jar, coordinates `com.github.Muzamilabdallah:photoeditor`). `jitpack.yml` at the repo root builds it on JitPack with JDK 17 via `:photoeditor:publishToMavenLocal`. Validate locally with `./gradlew :photoeditor:publishToMavenLocal`.
 
@@ -32,7 +32,7 @@ README.md at the repo root documents the consumer-facing install and wiring snip
 
 ### Data flow
 
-`MainActivity` (in `:app`) → `PhotoEditor` (public entry point, `ui/PhotoEditor.kt` — owns theme, default state holder, photo picking, and bitmap decoding) → `EditorHostContent` (adapter, `ui/EditorHost.kt`) → `PhotoEditorScreen` (stateless UI). State is owned by `PhotoEditorState` (`state/PhotoEditorState.kt`), a plain Compose state holder created via `rememberPhotoEditorState()` — deliberately **not** an AAC ViewModel (Compose-library idiom, no lifecycle dependency). It exposes `editorState`/`canUndo`/`canRedo`/`saveSuccess` as snapshot state; all mutations go through its methods. Retention across rotation/process death is handled by a custom `Saver` (`state/PhotoEditorStateSaver.kt`) that flattens elements/tool/styles to Bundle-safe primitives — the bitmap is intentionally excluded (too large); `PhotoEditor` persists the picked image *uri* via `rememberSaveable` and re-decodes on restore. Undo history is not retained.
+`MainActivity` (in `:app` — owns photo picking and uri persistence) → `PhotoEditor` (public entry point, `ui/PhotoEditor.kt` — owns theme and default state holder; **no picker**: consumers pass a `bitmap` or wire `onPickImage`, which is nullable — null hides all pick affordances) → `EditorHostContent` (adapter, `ui/EditorHost.kt`) → `PhotoEditorScreen` (stateless UI). Consumers who want their own chrome skip all of this and use the public `PhotoEditorCanvas` (`ui/PhotoEditorCanvas.kt`) — the editing surface alone, auto-wired to the state holder. State is owned by `PhotoEditorState` (`state/PhotoEditorState.kt`), a plain Compose state holder created via `rememberPhotoEditorState()` — deliberately **not** an AAC ViewModel (Compose-library idiom, no lifecycle dependency). It exposes `editorState`/`canUndo`/`canRedo`/`saveSuccess` as snapshot state; all mutations go through its methods. Retention across rotation/process death is handled by a custom `Saver` (`state/PhotoEditorStateSaver.kt`) that flattens elements/tool/styles to Bundle-safe primitives — the bitmap is intentionally excluded (too large); persisting the image *uri* and re-decoding on restore is the consumer's job (the demo's `MainActivity` shows the pattern with `rememberSaveable`). Undo history is not retained.
 
 ### Element model (`domain/EditElement.kt`)
 
@@ -67,7 +67,8 @@ This is the key invariant that lets the same coordinates render correctly at any
 - `history/HistoryManager.kt` — undo/redo deque (internal).
 - `state/PhotoEditorState.kt` — public state holder + `rememberPhotoEditorState()`; sole owner of the editor state (snapshot state).
 - `state/PhotoEditorStateSaver.kt` — custom `Saver` (internal): elements/tool/styles → Bundle-safe primitives.
-- `ui/PhotoEditor.kt` — public `PhotoEditor(...)` entry point: theme + default state holder + built-in `PickVisualMedia` picker + safe bitmap decoding (`decodeEditableBitmap`: software allocation — hardware bitmaps would crash the exporter's pixel copy — and ≤4096px downsampling).
+- `ui/PhotoEditor.kt` — public `PhotoEditor(...)` entry point: theme + default state holder; no picker (consumer provides `bitmap` or `onPickImage`). Also home of the public `decodeEditableBitmap` helper: software allocation — hardware bitmaps would crash the exporter's pixel copy — and ≤4096px downsampling.
+- `ui/PhotoEditorCanvas.kt` — public `PhotoEditorCanvas(state)`: the bare editing surface for consumers building their own chrome; wires `EditorCanvas`'s gesture callbacks into `PhotoEditorState`.
 - `ui/PhotoEditorScreen.kt` — top-level `Scaffold`, `EditorTopBar`, `EmptyState`. `internal`.
 - `ui/EditorHost.kt` — `EditorHostContent` adapter (internal): wires `PhotoEditorState` into `PhotoEditorScreen`'s callbacks.
 - `ui/components/` — `EditorCanvas`, `EditorToolbar` (`ToolButton` + `ShapeToolButton`), `TextInputDialog`, `DraggableElement`, `TextElementContent`/`EmojiElementContent`, `ShapeElementContent`. All `internal`.
@@ -75,11 +76,11 @@ This is the key invariant that lets the same coordinates render correctly at any
 
 ### `:app` layout
 
-Just `MainActivity.kt` — `setContent { PhotoEditor() }`. (The Kotlin package `com.muzamil.photoeditor` is shared with the library — this is fine because the AGP namespaces differ, so R classes don't collide.)
+Just `MainActivity.kt` — hosts the `PickVisualMedia` picker, persists the picked uri via `rememberSaveable`, decodes with `decodeEditableBitmap` on `Dispatchers.IO`, and passes `state` + `onPickImage` to `PhotoEditor`. This is the reference integration for consumers. (The Kotlin package `com.muzamil.photoeditor` is shared with the library — this is fine because the AGP namespaces differ, so R classes don't collide.)
 
 ### Permissions
 
-The photo picker (`PickVisualMedia`) and MediaStore writes need no permission on API 29+, so the library declares none for them (`READ_MEDIA_IMAGES` was deliberately removed — Play flags it and nothing here needs it). The **library** manifest (`photoeditor/src/main/AndroidManifest.xml`) declares only `WRITE_EXTERNAL_STORAGE` with `maxSdkVersion=28`, used by `SaveDestination.Gallery` legacy public-directory writes on API 24–28; requesting it at runtime there is the consumer's job. `SaveDestination.File` (app-private paths) needs no permission.
+MediaStore writes (and the demo app's `PickVisualMedia` picker) need no permission on API 29+, so the library declares none for them (`READ_MEDIA_IMAGES` was deliberately removed — Play flags it and nothing here needs it). The **library** manifest (`photoeditor/src/main/AndroidManifest.xml`) declares only `WRITE_EXTERNAL_STORAGE` with `maxSdkVersion=28`, used by `SaveDestination.Gallery` legacy public-directory writes on API 24–28; requesting it at runtime there is the consumer's job. `SaveDestination.File` (app-private paths) needs no permission.
 
 ### Save destinations
 

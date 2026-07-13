@@ -74,7 +74,7 @@ internal fun PhotoEditorScreen(
     canRedo: Boolean,
     saveSuccess: String?,
     onSaveSuccessShown: () -> Unit,
-    onPickImage: () -> Unit,
+    onPickImage: (() -> Unit)?,
     onSaveImage: () -> Unit,
     onContainerSizeChanged: (IntSize) -> Unit,
     onToolSelected: (EditorTool) -> Unit,
@@ -352,7 +352,7 @@ private fun EditorTopBar(
     hasElements: Boolean,
     canUndo: Boolean,
     canRedo: Boolean,
-    onPickImage: () -> Unit,
+    onPickImage: (() -> Unit)?,
     onSaveImage: () -> Unit,
     onUndo: () -> Unit,
     onRedo: () -> Unit,
@@ -376,8 +376,10 @@ private fun EditorTopBar(
         },
         actions = {
 
-            IconButton(onClick = onPickImage) {
-                Icon(Icons.Default.Add, contentDescription = "Pick Image")
+            if (onPickImage != null) {
+                IconButton(onClick = onPickImage) {
+                    Icon(Icons.Default.Add, contentDescription = "Pick Image")
+                }
             }
 
             IconButton(onClick = onUndo, enabled = canUndo) {
@@ -411,7 +413,7 @@ private fun EditorTopBar(
 }
 
 @Composable
-private fun EmptyState(onPickImage: () -> Unit) {
+private fun EmptyState(onPickImage: (() -> Unit)?) {
     Column(
         modifier = Modifier.fillMaxSize(),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -429,17 +431,19 @@ private fun EmptyState(onPickImage: () -> Unit) {
             style = MaterialTheme.typography.headlineSmall,
             color = MaterialTheme.colorScheme.onSurface
         )
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            "Tap the image icon above to pick a photo",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Spacer(modifier = Modifier.height(24.dp))
-        Button(onClick = onPickImage) {
-            Icon(Icons.Default.Add, contentDescription = null)
-            Spacer(modifier = Modifier.width(8.dp))
-            Text("Pick Image")
+        if (onPickImage != null) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                "Tap the image icon above to pick a photo",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.height(24.dp))
+            Button(onClick = onPickImage) {
+                Icon(Icons.Default.Add, contentDescription = null)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Pick Image")
+            }
         }
     }
 }

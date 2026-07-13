@@ -79,37 +79,48 @@ Then add `implementation("com.muzamil.photoeditor:photoeditor")` to your app mod
 
 ### Wire it up
 
-No permissions needed on Android 10+ (the photo picker and MediaStore writes are permission-free; on API 24–28 public gallery saves need `WRITE_EXTERNAL_STORAGE` at runtime — the library declares it with `maxSdkVersion=28`, your app requests it). The `PhotoEditor` composable owns its state, theme, photo picking, and bitmap decoding — the entire integration is:
+No permissions needed on Android 10+ (MediaStore writes are permission-free; on API 24–28 public gallery saves need `WRITE_EXTERNAL_STORAGE` at runtime — the library declares it with `maxSdkVersion=28`, your app requests it). The `PhotoEditor` composable owns its state, theme, and UI; **image sourcing is yours** — the library ships no photo picker, so it never dictates how images enter your app. Pass a bitmap directly:
 
 ```kotlin
 import com.muzamil.photoeditor.ui.PhotoEditor
 
-class EditorActivity : ComponentActivity() {
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        setContent {
-            PhotoEditor()
-        }
-    }
+setContent {
+    PhotoEditor(bitmap = myBitmap) // must be a software bitmap — see decodeEditableBitmap below
 }
 ```
 
-Every piece is overridable when you need more control:
+…or provide `onPickImage` with your own picking flow (here, the system photo picker) and load the result into hoisted state:
 
 ```kotlin
-val editorState = rememberPhotoEditorState() // hoist state to observe/drive the editor
-                                             // (e.g. editorState.undo(), editorState.canUndo)
+val state = rememberPhotoEditorState()  // hoist to observe/drive the editor
+val context = LocalContext.current
+var pickedUri by rememberSaveable { mutableStateOf<Uri?>(null) }
+
+val pickImage = rememberLauncherForActivityResult(
+    ActivityResultContracts.PickVisualMedia()
+) { uri -> if (uri != null) pickedUri = uri }
+
+LaunchedEffect(pickedUri) {
+    val uri = pickedUri ?: return@LaunchedEffect
+    withContext(Dispatchers.IO) {
+        decodeEditableBitmap(context.contentResolver, uri)
+    }?.let(state::loadImage)
+}
+
 PhotoEditor(
-    bitmap = myBitmap,                        // supply an image directly
-    state = editorState,
-    onPickImage = { launchMyOwnPicker() },    // replace the built-in photo picker
-    saveDestination =                         // where the save button writes:
-        SaveDestination.Gallery("MyApp"),     //   Pictures/MyApp via MediaStore, or…
+    state = state,
+    onPickImage = {
+        pickImage.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+    },
+    saveDestination =                     // where the save button writes:
+        SaveDestination.Gallery("MyApp"), //   Pictures/MyApp via MediaStore, or…
         // SaveDestination.File(File(filesDir, "edits/out.jpg")) — app-private path
 )
 ```
 
-Edits survive rotation and process death: `PhotoEditorState` ships a custom `Saver`, and the picked image uri is persisted and re-decoded on restore.
+`decodeEditableBitmap` produces the software, size-capped bitmap the editor requires — always use it (or equivalent) when loading from a uri; hardware bitmaps crash the exporter.
+
+Edits survive rotation and process death: `PhotoEditorState` ships a custom `Saver`. The bitmap itself is too large for saved state — persist the uri (as above, via `rememberSaveable`) and it re-decodes on restore.
 
 ### Bring your own UI
 

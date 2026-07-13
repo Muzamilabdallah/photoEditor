@@ -14,7 +14,7 @@ import com.muzamil.photoeditor.state.PhotoEditorState
 @Composable
 internal fun EditorHostContent(
     state: PhotoEditorState,
-    onPickImage: () -> Unit,
+    onPickImage: (() -> Unit)?,
     modifier: Modifier = Modifier,
     saveDestination: SaveDestination = SaveDestination.Gallery(),
 ) {
