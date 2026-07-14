@@ -9,7 +9,7 @@ plugins {
 // modules' generated POMs reference this artifact with the right GAV —
 // maven-publish derives POM dependency entries from project coordinates.
 group = "com.github.Muzamilabdallah"
-version = "2.0.0"
+version = "1.0.0"
 
 android {
     // Distinct from `:app` and `:photoeditor-ui-default` namespaces so AGP
