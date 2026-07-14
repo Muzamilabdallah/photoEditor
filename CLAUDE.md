@@ -89,4 +89,4 @@ Design rule: every selectable element (shape chips, swatches, nav tabs) uses one
 
 ### Permissions
 
-MediaStore writes (and the demo's `PickVisualMedia` picker) need no permission on API 29+. The **core** manifest declares only `WRITE_EXTERNAL_STORAGE` with `maxSdkVersion=28` for `SaveDestination.Gallery` legacy writes on API 24–28; requesting it at runtime is the consumer's job. ui-default's manifest declares nothing. `SaveDestination.File` (app-private paths) needs no permission.
+**Neither library module declares any permission** — keep it that way so consumers never inherit one. MediaStore writes (and the demo's `PickVisualMedia` picker) need no permission on API 29+. `SaveDestination.Gallery` legacy writes on API 24–28 need `WRITE_EXTERNAL_STORAGE` — declaring it (with `maxSdkVersion=28`) and requesting it at runtime is the consumer's job; the demo app's manifest shows the entry. `SaveDestination.File` (app-private paths) needs no permission.

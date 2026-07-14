@@ -12,8 +12,10 @@ sealed interface SaveDestination {
      *
      * On API 28 and below the public Pictures directory is written directly,
      * which requires the consumer app to hold `WRITE_EXTERNAL_STORAGE` at
-     * runtime — the library manifest declares it (`maxSdkVersion=28`), but
-     * requesting it at runtime is the consumer's responsibility.
+     * runtime. The library deliberately declares no permissions — if you
+     * support API 24–28 and use this destination, declare it in your app
+     * manifest with `maxSdkVersion=28` and request it at runtime (the demo
+     * app shows the manifest entry). Not needed on API 29+.
      */
     data class Gallery(val subFolder: String? = null) : SaveDestination
 

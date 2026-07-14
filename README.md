@@ -46,7 +46,7 @@ Launch "Photo Editor" from the app drawer and choose a sample: **Default UI** (M
 
 ## Mode B — the built-in editor
 
-No permissions needed on Android 10+ (MediaStore writes are permission-free; on API 24–28 public gallery saves need `WRITE_EXTERNAL_STORAGE` at runtime — the library declares it with `maxSdkVersion=28`, your app requests it). The `PhotoEditor` composable owns its state, theme, and UI; **image sourcing is yours** — the library ships no photo picker. Pass a bitmap directly:
+The library declares **no permissions**. None are needed on Android 10+ (MediaStore writes are permission-free); only if your app supports API 24–28 *and* uses gallery saves, declare `WRITE_EXTERNAL_STORAGE` with `maxSdkVersion="28"` in your own manifest and request it at runtime (the demo app's manifest shows the entry). The `PhotoEditor` composable owns its state, theme, and UI; **image sourcing is yours** — the library ships no photo picker. Pass a bitmap directly:
 
 ```kotlin
 import com.muzamil.photoeditor.ui.PhotoEditor

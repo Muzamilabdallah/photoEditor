@@ -1,9 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Only needed for SaveDestination.Gallery on API 24–28, where the public
-         Pictures directory is written directly (no MediaStore RELATIVE_PATH).
-         Ignored on 29+. The photo picker itself needs no permission. -->
-    <uses-permission
-        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
-        android:maxSdkVersion="28" />
+    <!-- No permissions: the library declares none so it never forces one on
+         consumers. SaveDestination.Gallery writes need no permission on
+         API 29+; ONLY if you support API 24–28 AND use Gallery saves, declare
+         WRITE_EXTERNAL_STORAGE (maxSdkVersion=28) in your app manifest and
+         request it at runtime — see the demo app. -->
 </manifest>
