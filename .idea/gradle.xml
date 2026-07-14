@@ -11,7 +11,8 @@
           <set>
             <option value="$PROJECT_DIR$" />
             <option value="$PROJECT_DIR$/app" />
-            <option value="$PROJECT_DIR$/photoeditor" />
+            <option value="$PROJECT_DIR$/photoeditor-core" />
+            <option value="$PROJECT_DIR$/photoeditor-ui-default" />
           </set>
         </option>
       </GradleProjectSettings>

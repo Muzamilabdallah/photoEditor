@@ -21,4 +21,5 @@ dependencyResolutionManagement {
 
 rootProject.name = "photoEditor"
 include(":app")
-include(":photoeditor")
+include(":photoeditor-core")
+include(":photoeditor-ui-default")

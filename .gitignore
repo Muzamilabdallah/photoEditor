@@ -15,4 +15,4 @@
 local.properties
 
 # Project exclude paths
-/photoeditor/build/
+build/

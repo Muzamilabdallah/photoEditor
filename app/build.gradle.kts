@@ -42,7 +42,9 @@ android {
 }
 
 dependencies {
-    implementation(project(":photoeditor"))
+    // Mode B: ui-default re-exports :photoeditor-core via `api`, so this one
+    // dependency provides both. The custom-UI sample only uses core types.
+    implementation(project(":photoeditor-ui-default"))
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)

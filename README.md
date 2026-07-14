@@ -1,30 +1,13 @@
 # photoEditor
 
-WhatsApp-style photo editor for Android, delivered as a Jetpack Compose library (`:photoeditor`) with a demo app (`:app`). Lets users overlay text, emoji, freehand drawings, and shape primitives (rectangle / circle / line) on a picked image and export the composite via MediaStore.
+WhatsApp-style photo editor for Android, built with Jetpack Compose and published as **two independently installable artifacts**:
+
+- **`photoeditor-core`** — the UI-agnostic engine: the editing canvas composable, element model, gestures, undo/redo, state holder, and export. Zero Material dependency, no opinion about how panels look.
+- **`photoeditor-ui-default`** — the optional batteries-included UI: tool panels (Shape, Text, Draw, Emoji), bottom tool nav, top bar, and a token-based `PhotoEditorTheme`. Depends on core.
+
+Users overlay text, emoji, freehand drawings, and shapes (rect / circle / line / triangle / star / heart / arrow) on an image and export the composite via MediaStore or to a file.
 
 ## Installation
-
-### Requirements
-
-- Android Studio Ladybug (2024.2) or newer
-- JDK 11+ on `PATH`
-- `minSdk 24`, `compileSdk 36`
-
-### Try the demo app
-
-Clone, then install on a connected device or running emulator:
-
-```bash
-git clone <this-repo-url>
-cd photoEditor2
-./gradlew :app:installDebug
-```
-
-Launch "Photo Editor" from the app drawer, tap the **+** icon to pick an image, then edit and save — results land in `Pictures/` via MediaStore.
-
-### Use the `:photoeditor` library in your own project
-
-**Option 1 — JitPack (recommended)**
 
 Add the JitPack repository to your `settings.gradle.kts`:
 
@@ -38,48 +21,32 @@ dependencyResolutionManagement {
 }
 ```
 
-Then add the dependency to your app module (see [jitpack.io/#Muzamilabdallah/photoEditor](https://jitpack.io/#Muzamilabdallah/photoEditor) for the latest tag):
+Then pick one of two modes (see [jitpack.io/#Muzamilabdallah/photoEditor](https://jitpack.io/#Muzamilabdallah/photoEditor) for the latest tag):
 
 ```kotlin
-dependencies {
-    implementation("com.github.Muzamilabdallah.photoEditor:photoeditor:<tag>")
-}
+// Mode A — canvas only, you build your own toolbar UI
+implementation("com.github.Muzamilabdallah.photoEditor:photoeditor-core:<tag>")
+
+// Mode B — canvas + built-in panels (Shape, Text, Draw, Emoji)
+implementation("com.github.Muzamilabdallah.photoEditor:photoeditor-core:<tag>")
+implementation("com.github.Muzamilabdallah.photoEditor:photoeditor-ui-default:<tag>")
 ```
 
-Alternatively, the library can be consumed as a local Gradle module. Two options:
+**Which mode?** Pick **Mode B** if you want a working editor in one composable — `PhotoEditor(...)` ships the panels, toolbar, and theming, and you can restyle it with a few `PhotoEditorTheme` tokens (see [THEMING.md](THEMING.md)). Pick **Mode A** when the editor must match your app's own design system exactly: you get `PhotoEditorCanvas` (the full gesture-handling editing surface) plus all state types (`PhotoEditorState`, `EditorShape`, `ShapeToolState`, `EditorColors`), and every pixel of chrome is yours. `ui-default` declares core as an `api` dependency, so in Mode B the single `photoeditor-ui-default` line would suffice — listing both just makes the coupling explicit.
 
-**Option 2 — copy the module into your repo**
+### Try the demo app
 
-1. Copy the `photoeditor/` directory into your project root.
-2. In your `settings.gradle.kts`:
-   ```kotlin
-   include(":photoeditor")
-   ```
-3. In your app module's `build.gradle.kts`:
-   ```kotlin
-   dependencies {
-       implementation(project(":photoeditor"))
-   }
-   ```
-
-**Option 3 — include the repo as a composite build**
-
-In your consumer project's `settings.gradle.kts`:
-
-```kotlin
-includeBuild("/absolute/path/to/photoEditor2") {
-    dependencySubstitution {
-        substitute(module("com.muzamil.photoeditor:photoeditor"))
-            .using(project(":photoeditor"))
-    }
-}
+```bash
+git clone <this-repo-url>
+cd photoEditor
+./gradlew :app:installDebug
 ```
 
-Then add `implementation("com.muzamil.photoeditor:photoeditor")` to your app module.
+Launch "Photo Editor" from the app drawer and choose a sample: **Default UI** (Mode B) or **Custom UI** (Mode A, a hand-rolled toolbar over core alone).
 
-### Wire it up
+## Mode B — the built-in editor
 
-No permissions needed on Android 10+ (MediaStore writes are permission-free; on API 24–28 public gallery saves need `WRITE_EXTERNAL_STORAGE` at runtime — the library declares it with `maxSdkVersion=28`, your app requests it). The `PhotoEditor` composable owns its state, theme, and UI; **image sourcing is yours** — the library ships no photo picker, so it never dictates how images enter your app. Pass a bitmap directly:
+No permissions needed on Android 10+ (MediaStore writes are permission-free; on API 24–28 public gallery saves need `WRITE_EXTERNAL_STORAGE` at runtime — the library declares it with `maxSdkVersion=28`, your app requests it). The `PhotoEditor` composable owns its state, theme, and UI; **image sourcing is yours** — the library ships no photo picker. Pass a bitmap directly:
 
 ```kotlin
 import com.muzamil.photoeditor.ui.PhotoEditor
@@ -118,15 +85,19 @@ PhotoEditor(
 )
 ```
 
-`decodeEditableBitmap` produces the software, size-capped bitmap the editor requires — always use it (or equivalent) when loading from a uri; hardware bitmaps crash the exporter.
+`decodeEditableBitmap` (in `com.muzamil.photoeditor.image`, part of core) produces the software, size-capped bitmap the editor requires — always use it (or equivalent) when loading from a uri; hardware bitmaps crash the exporter.
 
-Edits survive rotation and process death: `PhotoEditorState` ships a custom `Saver`. The bitmap itself is too large for saved state — persist the uri (as above, via `rememberSaveable`) and it re-decodes on restore.
+Edits survive rotation and process death: `PhotoEditorState` ships a custom `Saver`. The bitmap itself is too large for saved state — persist the uri (as above, via `rememberSaveable`) and re-decode on restore.
 
-### Bring your own UI
+## Mode A — bring your own UI
 
-If the built-in toolbar and top bar don't match your app's design, skip `PhotoEditor` entirely and use `PhotoEditorCanvas` — the editing surface alone. It renders the image and elements and handles all editing gestures (select, deselect, drag/rotate/scale, freehand drawing); everything else is driven through `PhotoEditorState` from your own controls:
+Skip `photoeditor-ui-default` entirely and use `PhotoEditorCanvas` — the editing surface alone. It renders the image and elements and handles all editing gestures (select, deselect, drag/rotate/scale, freehand drawing); everything else is driven through `PhotoEditorState` from your own controls:
 
 ```kotlin
+import com.muzamil.photoeditor.canvas.PhotoEditorCanvas
+import com.muzamil.photoeditor.domain.EditorShape
+import com.muzamil.photoeditor.domain.EditorTool
+
 val state = rememberPhotoEditorState()
 val context = LocalContext.current
 
@@ -135,7 +106,8 @@ Column {
     MyToolbar(
         onAddText = { state.addText("Hello") },
         onDraw = { state.selectTool(EditorTool.Drawing) },
-        onShape = { state.addShape(ShapeKind.Circle) },
+        onShape = { state.addShape(EditorShape.Circle) },
+        onShapeStyle = { state.updateShapeTool(color = EditorColors.Blue, filled = true) },
         onUndo = { state.undo() },       // observe state.canUndo / state.canRedo
         onDelete = { state.deleteSelectedElement() },
         onSave = { state.saveEditedImage(context) },
@@ -143,6 +115,12 @@ Column {
 }
 ```
 
-Load images with `state.loadImage(bitmap)`. If the image comes from a uri, decode it with `decodeEditableBitmap(contentResolver, uri)` (on a background dispatcher) — the editor needs a software bitmap, and this also downsamples oversized images safely.
+The tool state types your UI binds to (`ShapeToolState`, `EditorShape`, `EditorColors`) live in core — the built-in `ShapeToolPanel` uses exactly the same ones. `EditorShapePaths` (also core) builds each shape as a `Path` so custom pickers can render matching icons.
 
-See `app/src/main/java/com/muzamil/photoeditor/MainActivity.kt` for the working demo.
+Load images with `state.loadImage(bitmap)`; decode uris with `decodeEditableBitmap` first (on a background dispatcher).
+
+See `app/src/main/java/com/muzamil/photoeditor/` for both working samples: `DefaultUiSample.kt` (Mode B) and `CustomUiSample.kt` (Mode A).
+
+## Theming
+
+The default UI is styled entirely by `PhotoEditorTheme` design tokens (`PhotoEditorColors`, `PhotoEditorShapes`) — override a handful of colors to rebrand it, or replace individual panels while keeping the rest. See [THEMING.md](THEMING.md).

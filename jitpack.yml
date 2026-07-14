@@ -1,4 +1,4 @@
 jdk:
   - openjdk17
 install:
-  - ./gradlew :photoeditor:publishToMavenLocal
+  - ./gradlew :photoeditor-core:publishToMavenLocal :photoeditor-ui-default:publishToMavenLocal
