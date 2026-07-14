@@ -49,6 +49,7 @@ fun DefaultUiSample() {
 
     PhotoEditor(
         state = state,
+        
         onPickImage = {
             pickImage.launch(
                 PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)

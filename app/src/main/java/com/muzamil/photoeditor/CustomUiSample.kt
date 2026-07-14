@@ -82,6 +82,7 @@ fun CustomUiSample() {
     Column(modifier = Modifier.fillMaxSize().background(Color(0xFF101114))) {
         PhotoEditorCanvas(state = state, modifier = Modifier.weight(1f))
 
+
         // The custom toolbar: plain Compose, no library UI.
         Column(
             modifier = Modifier
