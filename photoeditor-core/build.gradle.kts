@@ -64,6 +64,21 @@ publishing {
             afterEvaluate {
                 from(components["release"])
             }
+            pom {
+                name = "photoeditor-core"
+                description = "UI-agnostic photo editor engine for Jetpack Compose: " +
+                        "editing canvas, element model, undo/redo, state holder, export."
+                url = "https://github.com/Muzamilabdallah/photoEditor"
+                licenses {
+                    license {
+                        name = "The Apache License, Version 2.0"
+                        url = "https://www.apache.org/licenses/LICENSE-2.0.txt"
+                    }
+                }
+                scm {
+                    url = "https://github.com/Muzamilabdallah/photoEditor"
+                }
+            }
         }
     }
 }

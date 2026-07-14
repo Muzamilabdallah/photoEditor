@@ -59,6 +59,21 @@ publishing {
             afterEvaluate {
                 from(components["release"])
             }
+            pom {
+                name = "photoeditor-ui-default"
+                description = "Default UI for the photoeditor library: tool panels, " +
+                        "bottom nav, and token-based theme over photoeditor-core."
+                url = "https://github.com/Muzamilabdallah/photoEditor"
+                licenses {
+                    license {
+                        name = "The Apache License, Version 2.0"
+                        url = "https://www.apache.org/licenses/LICENSE-2.0.txt"
+                    }
+                }
+                scm {
+                    url = "https://github.com/Muzamilabdallah/photoEditor"
+                }
+            }
         }
     }
 }

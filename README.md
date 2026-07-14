@@ -124,3 +124,7 @@ See `app/src/main/java/com/muzamil/photoeditor/` for both working samples: `Defa
 ## Theming
 
 The default UI is styled entirely by `PhotoEditorTheme` design tokens (`PhotoEditorColors`, `PhotoEditorShapes`) — override a handful of colors to rebrand it, or replace individual panels while keeping the rest. See [THEMING.md](THEMING.md).
+
+## License
+
+Apache License 2.0 — see [LICENSE](LICENSE).
