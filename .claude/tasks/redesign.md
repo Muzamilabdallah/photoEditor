@@ -1,146 +1,143 @@
-# Task: Redesign the Shape tool panel in the photoEditor library
+# Task: Redesign the editor top bar, add typography tokens, polish empty state
 
-You are working in my Android photo editor library (Jetpack Compose). The library will be published as open source with two independently installable modules: a UI-agnostic core (canvas/engine) and an optional default UI module. This task (a) redesigns the Shape tool bottom panel in the default UI module, and (b) restructures the project so consumers can install the core alone and bring their own UI, or install both and get the built-in design.
+Continuation of the photoEditor default UI work. The Shape panel is done and follows the unified selection language. This task covers three things in `:photoeditor-ui-default` (plus one small state addition in `:photoeditor-core`): the editor top bar, a typography token system, and the "no image" empty state.
 
-## Module split — two published artifacts (do this first)
+## 1. Core addition: history state (in `:photoeditor-core`)
 
-Restructure the project so it publishes two Maven artifacts:
-
-```
-:photoeditor-core        →  com.<mygroup>:photoeditor-core
-:photoeditor-ui-default  →  com.<mygroup>:photoeditor-ui-default
-```
-
-Consumer installation must work in exactly two modes:
+Expose undo/redo availability from the engine as observable state so any UI (default or consumer-built) can drive button enabled-states:
 
 ```kotlin
-// Mode A — canvas only, consumer builds their own toolbar UI
-implementation("com.<mygroup>:photoeditor-core:<version>")
-
-// Mode B — canvas + built-in panels (Shape, Text, Draw, Emoji)
-implementation("com.<mygroup>:photoeditor-core:<version>")
-implementation("com.<mygroup>:photoeditor-ui-default:<version>")
-```
-
-Rules for the split:
-
-- **`:photoeditor-core`** contains the editor canvas composable, the drawing engine, undo/redo, export, and ALL tool state models and enums — including `ShapeToolState`, `EditorShape`, and default color constants. State models live in core (not the UI module) because a consumer in Mode A drives the canvas with these same types from their own custom UI. Core must have zero dependency on the UI module and no opinion about how panels look.
-- **`:photoeditor-ui-default`** contains only presentation: `ShapeToolPanel`, the other tool panels, the bottom tool nav, and `PhotoEditorTheme`. It depends on `:photoeditor-core` (`api`, so consumers get core types transitively in Mode B) and reads/writes state exclusively through core's public types and callbacks. Nothing in core may reference anything in this module.
-- **Dependency direction is one-way:** `ui-default → core`, never the reverse. Enforce it — if the current code has UI classes referenced from engine code, extract interfaces into core and move the implementations.
-- Update the sample app to demonstrate BOTH modes: one sample screen using the default UI, and one minimal sample driving the canvas with a custom hand-rolled toolbar to prove the core API is sufficient on its own.
-- Wire Maven publishing (maven-publish or vanniktech plugin, matching whatever the repo already uses) so both artifacts publish with correct POM dependencies — `ui-default`'s POM must declare `core` as a dependency.
-- Update the README with an "Installation" section showing both modes and a one-paragraph explanation of when to pick each.
-
-## Architecture requirements
-
-1. **Stateless, hoisted panel composable.** `ShapeToolState` lives in `:photoeditor-core` (see module rules above); the panel below lives in `:photoeditor-ui-default` and must be a plain `@Composable` with no internal ViewModel and no singletons:
-
-```kotlin
-data class ShapeToolState(
-    val selectedShape: EditorShape = EditorShape.Rect,
-    val selectedColor: Color = EditorColors.Red,
-    val strokeWidthPx: Float = 8f,
-    val isFilled: Boolean = false,
+@Immutable
+data class EditorHistoryState(
+    val canUndo: Boolean = false,
+    val canRedo: Boolean = false,
 )
+```
 
-enum class EditorShape { Rect, Circle, Line, Triangle, Star, Heart, Arrow }
+Expose it from the editor state holder (e.g. `PhotoEditorState.historyState: State<EditorHistoryState>` or a `StateFlow`, matching the existing state pattern in core). If undo/redo stacks already exist internally, derive it from them — do not duplicate history logic.
 
+## 2. Editor top bar (in `:photoeditor-ui-default`)
+
+Create `EditorTopBar.kt` as a stateless composable:
+
+```kotlin
 @Composable
-fun ShapeToolPanel(
-    state: ShapeToolState,
-    onShapeSelected: (EditorShape) -> Unit,
-    onColorSelected: (Color) -> Unit,
-    onStrokeWidthChanged: (Float) -> Unit,
-    onFilledChanged: (Boolean) -> Unit,
-    onDone: () -> Unit,
-    onDismiss: () -> Unit,
+fun EditorTopBar(
+    historyState: EditorHistoryState,
+    onConfirm: () -> Unit,
+    onAddImage: () -> Unit,
+    onUndo: () -> Unit,
+    onRedo: () -> Unit,
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier,
+    showConfirm: Boolean = true, // hidden when no image is loaded
+)
+```
+
+Layout: a single `Row`, height 56.dp, horizontal padding 14.dp, background `colors.surface`, bottom hairline divider `colors.outline` (0.5.dp).
+
+- **Confirm (primary action), at the start:** 40.dp circular button, `accent` background, `onAccent` check icon (20.dp). This is the ONLY accent-filled element in the bar — it must visually dominate. contentDescription = "Apply and save".
+- **Spacer(weight = 1f)** between confirm and the utility cluster.
+- **Utility cluster at the end, in order: Add image, Undo, Redo, Close.** Each: 36.dp circular button, `surfaceVariant` background, icon 18.dp, 8.dp gap between buttons.
+    - Add image: image/photo-plus icon (NOT a bare "+" — the plus alone is ambiguous). contentDescription = "Add image".
+    - Undo/Redo: use proper undo/redo icons (curved arrows — `Icons.AutoMirrored.Filled.Undo` / `.Redo`), NOT plain ← → arrows. Plain arrows read as navigation. contentDescriptions = "Undo" / "Redo".
+    - Undo enabled only when `historyState.canUndo`; Redo only when `canRedo`. Disabled state: icon tint `onSurfaceVariant` at 38% alpha, button not clickable. Animate tint change (150ms).
+    - Close: X icon, neutral styling (never red, never accent — it must not compete with confirm). contentDescription = "Close editor".
+- All icons tinted `onSurface` when enabled (except confirm which uses `onAccent`).
+- RTL: the layout must mirror correctly with `AutoMirrored` icons for undo/redo; test with `LayoutDirection.Rtl` preview (the sample app targets Arabic users).
+
+## 3. Typography tokens (in `:photoeditor-ui-default` theme)
+
+Add a `PhotoEditorTypography` to the theme, following the same CompositionLocal pattern as `PhotoEditorColors`:
+
+```kotlin
+@Immutable
+data class PhotoEditorTypography(
+    val panelTitle: TextStyle,   // 15.sp, Medium        — panel headers ("Shape")
+    val sectionLabel: TextStyle, // 12.sp, Normal        — "Color", "Stroke"
+    val body: TextStyle,         // 14.sp, Medium        — "Fill shape", primary rows
+    val bodySecondary: TextStyle,// 12.sp, Normal        — descriptions ("Solid instead of outline")
+    val chipLabel: TextStyle,    // 11.sp, Normal/Medium — shape chip + nav labels
+    val valueLabel: TextStyle,   // 13.sp, Medium        — value pills ("8 px")
+    val button: TextStyle,       // 14.sp, Medium        — "Done", "Pick Image"
+)
+```
+
+- Default `FontFamily` = system default (`FontFamily.Default`) so it inherits whatever the host app sets — do NOT bundle a font. Consumers override the whole set via `PhotoEditorTheme(typography = ...)`.
+- Color is NOT part of TextStyle here — text color always comes from `PhotoEditorColors` at the call site (onSurface / onSurfaceVariant / accent), so typography and color remain independently themeable.
+- Replace every hardcoded `fontSize`/`fontWeight` in the existing panels (Shape panel included) with these tokens. After this task, `grep -rn "\.sp" photoeditor-ui-default/src` should only match the theme files.
+
+## 4. Empty state ("No image selected" screen)
+
+- Replace the check-circle icon with an image-outline icon (e.g. photo/landscape icon) inside a 96.dp `surfaceVariant` circle with `onSurfaceVariant` tint — a check icon means "done" and is wrong for an empty state.
+- Title "No image selected" → `typography.panelTitle`... actually use a larger style: add `val screenTitle: TextStyle // 20.sp, Medium` to the typography set for this. Color `onSurface`.
+- Subtitle "Tap the image icon above to pick a photo" → `bodySecondary`, color `onSurfaceVariant`, but reword to "Pick a photo to start editing" (the current text points at a "+" that this task renames to an image icon).
+- "Pick Image" button: accent pill (same style as Done — `accent` bg, `onAccent` text, `button` typography, 20.dp radius, 12.dp/24.dp padding) with a photo-plus leading icon (18.dp).
+- Hide the confirm button in the top bar on this screen (`showConfirm = false`) — there is nothing to confirm without an image.
+
+## 5. Emoji panel: customizable emoji list
+
+- The Emoji panel takes its list as a parameter with a curated default:
+
+```kotlin
+@Composable
+fun EmojiToolPanel(
+    emojis: List<String> = PhotoEditorDefaults.emojis,
+    onEmojiSelected: (String) -> Unit,
     modifier: Modifier = Modifier,
 )
 ```
 
-2. **Design tokens via a theme, zero hardcoded colors.** Create a `PhotoEditorTheme` with a CompositionLocal so consumers restyle the default UI in a few lines instead of forking:
+- `PhotoEditorDefaults.emojis` lives in `:photoeditor-ui-default`: a curated list of universal + regionally relevant emojis (include Arabic-market-relevant entries alongside universal ones). Restrict to Unicode ≤ 15 so glyphs render on older Android system emoji fonts — no tofu on API 24+.
+- Plain `List<String>` — no wrapper type. Render emojis as text via the system emoji font (`Text` composable); do NOT bundle emoji image assets.
+- Core's add-emoji API (`addEmoji(emoji: String, ...)` or existing equivalent) accepts any string and must have no knowledge of the default list — remove any hardcoded emoji list from `:photoeditor-core` if one exists. Any string renders at sticker size; document this as a supported text-sticker shortcut, do not validate input.
+- Sample app: show one screen using the default list and one passing a custom domain-specific list, to prove the parameter works.
+
+## 6. Theme bridge: colors from the app's MaterialTheme (opt-in)
+
+- The library OWNS its palette; it must never read `MaterialTheme` implicitly. Default stays `PhotoEditorDefaults.darkColors()` (editor-native dark is correct for photo editing regardless of host app theme).
+- Add an opt-in bridge in `PhotoEditorDefaults`:
 
 ```kotlin
-@Immutable
-data class PhotoEditorColors(
-    val surface: Color,        // panel background
-    val surfaceVariant: Color, // unselected chip background
-    val onSurface: Color,      // primary text/icons
-    val onSurfaceVariant: Color, // secondary text/icons
-    val accent: Color,         // selection tint, active states, Done button
-    val onAccent: Color,       // text/icon on accent
-    val accentContainer: Color, // light accent tint for selected chip backgrounds
-    val onAccentContainer: Color,
-    val outline: Color,        // hairline borders
+@Composable
+fun colorsFromMaterialTheme(
+    scheme: ColorScheme = MaterialTheme.colorScheme
+): PhotoEditorColors = PhotoEditorColors(
+    surface = scheme.surfaceContainer,
+    surfaceVariant = scheme.surfaceContainerHigh,
+    onSurface = scheme.onSurface,
+    onSurfaceVariant = scheme.onSurfaceVariant,
+    accent = scheme.primary,
+    onAccent = scheme.onPrimary,
+    accentContainer = scheme.primaryContainer,
+    onAccentContainer = scheme.onPrimaryContainer,
+    outline = scheme.outlineVariant,
 )
-
-@Immutable
-data class PhotoEditorShapes(
-    val panel: CornerBasedShape,   // 16.dp
-    val chip: CornerBasedShape,    // 12.dp
-    val control: CornerBasedShape, // 8.dp
-)
-
-// Provide LocalPhotoEditorColors / LocalPhotoEditorShapes with sensible
-// dark + light defaults; PhotoEditorTheme(colors, shapes) { content }
 ```
 
-3. Add `@Preview` composables for the panel in light and dark, and for each selection state.
+- Document the three theming tiers in THEMING.md: (1) do nothing → editor-native dark; (2) `PhotoEditorTheme(colors = PhotoEditorDefaults.colorsFromMaterialTheme())` → follows app brand/dynamic color; (3) construct `PhotoEditorColors(...)` manually → full control, no Material dependency required.
 
-## Visual design spec — apply exactly
+## 7. Drawing swatch colors: shared, overridable palette
 
-The core principle: **one selection language everywhere**. Every selectable element (shape chips, color swatches, bottom nav tabs) uses the same pattern — `accentContainer` background + `accent` border/tint when selected; `surfaceVariant` background + `onSurfaceVariant` content when not. Remove the current inconsistency (filled circle for Rect vs ring for color vs blue text for nav).
-
-### 1. Panel header
-- Row: close icon button (X, 36.dp circular touch target) on the start, centered title "Shape" (15.sp, Medium), and a "Done" pill button on the end (accent background, onAccent text, 20.dp corner radius, 6.dp vertical / 16.dp horizontal padding, 14.sp Medium).
-
-### 2. Shape picker
-- Replace the two loose rows with a **4-column grid** (`LazyVerticalGrid` or a fixed `Row`/`Column` layout, 8.dp gaps) containing all 7 shapes: Rect, Circle, Line, Triangle, Star, Heart, Arrow.
-- Each chip: icon (20.dp) above an 11.sp label, 10.dp vertical padding, 12.dp corner radius.
-- Selected: 2.dp `accent` border + `accentContainer` background + `accent` icon/label tint, label weight Medium.
-- Unselected: 0.5.dp `outline` border + `surfaceVariant` background + `onSurfaceVariant` tint.
-- Grid must accommodate future shapes (polygon, rounded rect, speech bubble) without layout changes.
-
-### 3. Color swatches
-- Section label "Color" (12.sp, onSurfaceVariant) above the row.
-- Swatches: 34.dp circles, 10.dp gaps, wrap to next line if needed. Keep the existing 8 colors (black, white, red, orange, yellow, green, blue, purple).
-- Selected swatch: **double ring + checkmark** — 2.dp gap of panel surface color, then 2.dp `accent` ring (use `Modifier.border` twice or a `drawBehind`), plus a centered check icon (16.dp). Checkmark color: dark (near-black) on white/yellow swatches, white on all others. The checkmark is required — a ring alone fails when the swatch color is close to the ring color.
-- All swatches get a 0.5.dp `outline` border so white is visible on light surfaces.
-
-### 4. Stroke control
-- Header row: label "Stroke" (12.sp, onSurfaceVariant) on the start; a **live value pill** on the end showing e.g. "8 px" (13.sp Medium, `accentContainer` background, `onAccentContainer` text, 10.dp corner radius, 2.dp/10.dp padding).
-- Below: a single standard `Slider` (range 1f..40f, steps producing integer values), full width, accent-colored active track and thumb. Remove the current two-piece control that looks like a toggle glued to a slider.
-- The pill updates live as the slider moves; always display a rounded integer.
-
-### 5. Filled toggle
-- Row separated by a 0.5.dp top divider (`outline`), 12.dp vertical padding.
-- Start: two-line text — "Fill shape" (14.sp Medium, onSurface) over "Solid instead of outline" (12.sp, onSurfaceVariant). The description is required; "Filled" alone is ambiguous.
-- End: a `Switch` (or custom 48×28.dp toggle, 14.dp radius). Off: `surfaceVariant` track, `onSurfaceVariant` knob. On: `accent` track, `onAccent` knob. Animate the knob position and colors (150ms).
-
-### 6. Bottom tool nav (Text / Emoji / Draw / Shape)
-- 4 equal-width tabs, each: icon inside a 40×26.dp pill above an 11.sp label.
-- Active tab: `accentContainer` pill background + `accent` icon/label, label Medium. Inactive: transparent pill, `onSurfaceVariant` tint.
-- Separated from the panel content by a 0.5.dp top divider.
-
-### Accessibility
-- Every icon-only button gets a `contentDescription` (close, each swatch as "Color <name>", toggle as "Fill shape").
-- All touch targets ≥ 44.dp (use `Modifier.minimumInteractiveComponentSize()` where the visual is smaller).
-- Selection state must not rely on color alone — the border-width change, checkmark, and label weight changes cover this; keep them.
+- Add `PhotoEditorDefaults.swatchColors: List<Color>` — the current 8 (black, white, red, orange, yellow, green, blue, purple). This is the CONTENT palette users draw with; it is completely separate from the `PhotoEditorColors` theme tokens (chrome). Do not mix the two mechanisms or names.
+- Every panel with a color picker (Shape, Draw, Text) takes `swatchColors: List<Color> = PhotoEditorDefaults.swatchColors` as a parameter. All tools share the same default so a color picked in one tool is available in the others; per-panel override remains possible.
+- **Contrast must be computed, not enumerated.** Replace the hardcoded white/yellow → dark check special case with luminance: `if (color.luminance() > 0.5f) Color.Black else Color.White` for the selected-swatch checkmark. This must work for any consumer-supplied color (pastels, neons).
+- **Layout must handle any list length.** Replace the fixed edge-to-edge 8-swatch row with a wrapping layout (`FlowRow` or lazy grid) using fixed 10.dp gaps, so 3, 8, or 20 swatches all render correctly. Selected-ring and checkmark behavior unchanged.
+- Core needs NO changes: the engine already stores full `Color` values per element and must remain palette-agnostic (Mode A consumers may use an HSV picker). Verify nothing in `:photoeditor-core` references the swatch list.
+- Sample app: one screen passing a custom palette (including at least one light pastel) to prove the override and the luminance checkmark work.
 
 ## Constraints
-- Kotlin + Jetpack Compose only, no XML. Material 3 components are fine internally but the public API must only expose the `PhotoEditorTheme` tokens, not require consumers to use M3.
-- No new third-party dependencies.
-- Keep the panel free of any reference to engine internals beyond core's public types (`ShapeToolState` + callbacks) — the panel must compile in `:photoeditor-ui-default` against `:photoeditor-core`'s public API only.
-- Follow the existing code style in this repo; if the current Shape panel lives inside a Fragment or a monolithic composable, extract it into `:photoeditor-ui-default` as `shapetool/ShapeToolPanel.kt`, with `ShapeToolState.kt` in `:photoeditor-core` and theme files under `:photoeditor-ui-default`'s `theme/`.
-- After implementing, run the existing build/lint tasks for BOTH modules and the sample app, and fix any failures.
+- Same rules as before: stateless composables, no ViewModels inside the lib, all colors/sizes from theme tokens, no hardcoded colors, no new dependencies, `ui-default → core` one-way.
+- `EditorTopBar` is container-free like the panels — plain Row content, the consumer/sample places it.
+- Add previews: top bar (enabled/disabled history, LTR + RTL, light + dark), empty state (light + dark).
+- Run build + lint for both modules and the sample app; fix failures.
 
 ## Deliverables
-1. Two-module split: `:photoeditor-core` and `:photoeditor-ui-default` as independently publishable artifacts with one-way dependency (`ui-default → core`) and publishing config for both.
-2. `ShapeToolState`, `EditorShape`, and default color constants in `:photoeditor-core`.
-3. `PhotoEditorTheme` (colors, shapes, CompositionLocals, dark + light defaults) in `:photoeditor-ui-default`.
-4. Stateless `ShapeToolPanel` implementing the visual spec above, in `:photoeditor-ui-default`.
-5. Updated call site wiring state hoisting (remember/ViewModel stays at the caller).
-6. Sample app demonstrating both installation modes: default UI, and custom toolbar over core alone.
-7. Previews for light/dark and key states.
-8. README "Installation" section covering both modes, plus a `THEMING.md` section showing how a consumer overrides the theme in ~5 lines and how to replace the panel entirely while reusing the canvas.
-   Additional constraint: ShapeToolPanel is a plain layout, NOT a sheet. Do not wrap it in ModalBottomSheet, BottomSheetScaffold, or Dialog — it renders as container-free content sized by its modifier, with background/corners from the theme. The consumer chooses the container. In the sample app, anchor it inline above the canvas (Box + Modifier.align(Alignment.BottomCenter)), non-modal, no scrim — the canvas must stay visible and touchable while the panel is open.
+1. `EditorHistoryState` in core, derived from existing undo/redo stacks.
+2. `EditorTopBar` per spec, wired into the sample app replacing the current header.
+3. `PhotoEditorTypography` tokens + all panels migrated off hardcoded sp values.
+4. Polished empty state per spec.
+5. `EmojiToolPanel` with `emojis: List<String> = PhotoEditorDefaults.emojis` parameter; core emoji API list-agnostic; sample screens for default and custom lists.
+6. `PhotoEditorDefaults.colorsFromMaterialTheme()` bridge.
+7. Shared overridable `PhotoEditorDefaults.swatchColors` across Shape/Draw/Text panels, with luminance-based checkmark contrast and a wrapping swatch layout; sample screen with a custom palette.
+8. Previews (RTL included) and THEMING.md covering the three color tiers plus a typography override example.

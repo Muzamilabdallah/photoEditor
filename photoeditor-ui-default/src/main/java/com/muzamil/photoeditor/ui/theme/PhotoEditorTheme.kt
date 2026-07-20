@@ -77,25 +77,27 @@ val LocalPhotoEditorColors = staticCompositionLocalOf { lightPhotoEditorColors()
 val LocalPhotoEditorShapes = staticCompositionLocalOf { PhotoEditorShapes() }
 
 /**
- * Themes the default editor UI. All built-in components read [colors] and
- * [shapes] through composition locals; a Material 3 color scheme is derived
- * from the same tokens internally so the few M3 components used (dialogs,
- * sliders, text fields) match — consumers never need to touch Material.
+ * Themes the default editor UI. All built-in components read [colors],
+ * [typography], and [shapes] through composition locals; a Material 3 color
+ * scheme is derived from the same tokens internally so the few M3 components
+ * used (dialogs, sliders, text fields) match — consumers never need to touch
+ * Material.
  */
 @Composable
 fun PhotoEditorTheme(
     colors: PhotoEditorColors = if (isSystemInDarkTheme()) darkPhotoEditorColors()
     else lightPhotoEditorColors(),
+    typography: PhotoEditorTypography = PhotoEditorTypography(),
     shapes: PhotoEditorShapes = PhotoEditorShapes(),
     content: @Composable () -> Unit,
 ) {
     CompositionLocalProvider(
         LocalPhotoEditorColors provides colors,
+        LocalPhotoEditorTypography provides typography,
         LocalPhotoEditorShapes provides shapes,
     ) {
         MaterialTheme(
             colorScheme = colors.toMaterialColorScheme(),
-            typography = Typography,
             content = content,
         )
     }

@@ -29,7 +29,7 @@ import kotlinx.coroutines.withContext
  * edits (which the library's state saver retains on its own).
  */
 @Composable
-fun DefaultUiSample() {
+fun DefaultUiSample(onClose: (() -> Unit)? = null) {
     val context = LocalContext.current
     val state = rememberPhotoEditorState()
     var pickedImageUri by rememberSaveable { mutableStateOf<Uri?>(null) }
@@ -49,11 +49,11 @@ fun DefaultUiSample() {
 
     PhotoEditor(
         state = state,
-        
         onPickImage = {
             pickImage.launch(
                 PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
             )
         },
+        onClose = onClose,
     )
 }

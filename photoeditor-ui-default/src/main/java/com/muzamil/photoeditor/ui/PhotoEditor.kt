@@ -1,14 +1,20 @@
 package com.muzamil.photoeditor.ui
 
 import android.graphics.Bitmap
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import com.muzamil.photoeditor.export.SaveDestination
 import com.muzamil.photoeditor.state.PhotoEditorState
 import com.muzamil.photoeditor.state.rememberPhotoEditorState
 import com.muzamil.photoeditor.ui.theme.PhotoEditorColors
+import com.muzamil.photoeditor.ui.theme.PhotoEditorDefaults
 import com.muzamil.photoeditor.ui.theme.PhotoEditorTheme
+import com.muzamil.photoeditor.ui.theme.PhotoEditorTypography
+import com.muzamil.photoeditor.ui.theme.darkPhotoEditorColors
+import com.muzamil.photoeditor.ui.theme.lightPhotoEditorColors
 
 /**
  * The public entry point of the batteries-included photo editor: theme, top
@@ -56,7 +62,18 @@ import com.muzamil.photoeditor.ui.theme.PhotoEditorTheme
  *   [SaveDestination.File] for a path you control, e.g. app-private storage:
  *   `SaveDestination.File(File(context.filesDir, "edits/out.jpg"))`.
  * - [colors] — restyle the whole UI by overriding a few [PhotoEditorColors]
- *   tokens; defaults follow the system light/dark setting (see THEMING.md).
+ *   tokens; defaults follow the system light/dark setting. Pass
+ *   [PhotoEditorDefaults.colorsFromMaterialTheme] to follow the host app's
+ *   Material theme instead (see THEMING.md).
+ * - [typography] — override the [PhotoEditorTypography] text-style tokens;
+ *   null uses the defaults (system font, built-in sizes).
+ * - [onClose] — invoked by the close button in the top bar; when null, the
+ *   close button is hidden.
+ * - [emojis] — the Emoji panel's grid. Plain strings rendered with the system
+ *   emoji font; any string works and renders at sticker size, so short text
+ *   is a supported text-sticker shortcut.
+ * - [swatchColors] — the content palette shared by every color picker (Shape,
+ *   Draw, Text). Separate from [colors], which themes the editor's chrome.
  *
  * Edits (elements, tool, styles) survive configuration changes and process
  * death via [PhotoEditorState]'s saver. The bitmap itself is too large for
@@ -75,22 +92,28 @@ fun PhotoEditor(
     onPickImage: (() -> Unit)? = null,
     saveDestination: SaveDestination = SaveDestination.Gallery(),
     colors: PhotoEditorColors? = null,
+    typography: PhotoEditorTypography? = null,
+    onClose: (() -> Unit)? = null,
+    emojis: List<String> = PhotoEditorDefaults.emojis,
+    swatchColors: List<Color> = PhotoEditorDefaults.swatchColors,
 ) {
     LaunchedEffect(bitmap) {
         bitmap?.let(state::loadImage)
     }
 
-    val content: @Composable () -> Unit = {
+    PhotoEditorTheme(
+        colors = colors ?: if (isSystemInDarkTheme()) darkPhotoEditorColors()
+        else lightPhotoEditorColors(),
+        typography = typography ?: PhotoEditorTypography(),
+    ) {
         EditorHostContent(
             state = state,
             onPickImage = onPickImage,
             modifier = modifier,
+            onClose = onClose,
             saveDestination = saveDestination,
+            emojis = emojis,
+            swatchColors = swatchColors,
         )
-    }
-    if (colors != null) {
-        PhotoEditorTheme(colors = colors, content = content)
-    } else {
-        PhotoEditorTheme(content = content)
     }
 }

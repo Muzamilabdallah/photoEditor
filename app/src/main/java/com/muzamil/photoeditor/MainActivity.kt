@@ -34,6 +34,8 @@ import androidx.compose.ui.unit.sp
  *
  * - **Default UI** ([DefaultUiSample]) — Mode B: `photoeditor-ui-default`'s
  *   `PhotoEditor` composable with the built-in panels and theme.
+ * - **Customized default UI** ([CustomizedUiSample]) — Mode B with a custom
+ *   emoji list, custom swatch palette, and MaterialTheme-bridged colors.
  * - **Custom UI** ([CustomUiSample]) — Mode A: `photoeditor-core` alone;
  *   `PhotoEditorCanvas` plus a hand-rolled toolbar driving the state holder.
  */
@@ -47,7 +49,8 @@ class MainActivity : ComponentActivity() {
             BackHandler(enabled = mode != null) { mode = null }
 
             when (mode) {
-                "default" -> DefaultUiSample()
+                "default" -> DefaultUiSample(onClose = { mode = null })
+                "customized" -> CustomizedUiSample(onClose = { mode = null })
                 "custom" -> CustomUiSample()
                 else -> ModeChooser(onPick = { mode = it })
             }
@@ -73,6 +76,11 @@ private fun ModeChooser(onPick: (String) -> Unit) {
             title = "Default UI (core + ui-default)",
             description = "The batteries-included PhotoEditor with built-in panels and theme.",
             onClick = { onPick("default") },
+        )
+        ModeCard(
+            title = "Customized default UI",
+            description = "PhotoEditor with a custom emoji list, a pastel swatch palette, and colors bridged from the app's MaterialTheme.",
+            onClick = { onPick("customized") },
         )
         ModeCard(
             title = "Custom UI (core only)",

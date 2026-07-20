@@ -7,36 +7,27 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.rounded.CheckCircle
-import androidx.compose.material3.Button
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -48,31 +39,40 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import com.muzamil.photoeditor.domain.EditElement
+import com.muzamil.photoeditor.domain.EditorHistoryState
 import com.muzamil.photoeditor.domain.EditorShape
 import com.muzamil.photoeditor.domain.EditorState
 import com.muzamil.photoeditor.domain.EditorTool
 import com.muzamil.photoeditor.ui.components.EditorStylePanel
 import com.muzamil.photoeditor.ui.components.EditorToolbar
-import com.muzamil.photoeditor.ui.components.EmojiPickerDialog
+import com.muzamil.photoeditor.ui.components.EditorTopBar
 import com.muzamil.photoeditor.ui.components.StyleContext
 import com.muzamil.photoeditor.ui.components.TextInputDialog
+import com.muzamil.photoeditor.ui.emojitool.EmojiToolPanel
+import com.muzamil.photoeditor.ui.icons.EditorIcons
 import com.muzamil.photoeditor.ui.shapetool.ShapeToolPanel
+import com.muzamil.photoeditor.ui.theme.LocalPhotoEditorColors
+import com.muzamil.photoeditor.ui.theme.LocalPhotoEditorTypography
+import com.muzamil.photoeditor.ui.theme.PhotoEditorTheme
+import com.muzamil.photoeditor.ui.theme.darkPhotoEditorColors
+import com.muzamil.photoeditor.ui.theme.lightPhotoEditorColors
 
 private val ToolbarHeight = 72.dp
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun PhotoEditorScreen(
     bitmap: Bitmap?,
     editorState: EditorState,
-    canUndo: Boolean,
-    canRedo: Boolean,
+    historyState: EditorHistoryState,
     saveSuccess: String?,
     onSaveSuccessShown: () -> Unit,
     onPickImage: (() -> Unit)?,
+    onClose: (() -> Unit)?,
     onSaveImage: () -> Unit,
     onToolSelected: (EditorTool) -> Unit,
     onAddText: (String, Offset) -> Unit,
@@ -83,7 +83,8 @@ internal fun PhotoEditorScreen(
     onDeleteSelected: () -> Unit,
     onUndo: () -> Unit,
     onRedo: () -> Unit,
-    onClearAll: () -> Unit,
+    emojis: List<String>,
+    swatchColors: List<Color>,
 
     onUpdateTextDefault: (Color?, TextUnit?) -> Unit,
     onUpdateDrawingDefault: (Color?, Float?) -> Unit,
@@ -126,26 +127,24 @@ internal fun PhotoEditorScreen(
             selected is EditElement.Emoji ||
             selected is EditElement.Drawing ||
             selected is EditElement.Shape
-    val toolIsTextOrDrawing = editorState.currentTool == EditorTool.Text ||
-            editorState.currentTool == EditorTool.Drawing
-    val showStylePanel = (toolIsTextOrDrawing || selectionIsStyleable) && styleContext != null
+    // Text gets no default-style panel: the sheet pops up only once the text
+    // is drawn and selected (see the TextInputDialog onConfirm below).
+    val toolIsDrawing = editorState.currentTool == EditorTool.Drawing
+    val showStylePanel = (toolIsDrawing || selectionIsStyleable) && styleContext != null
     val showShapePanel = editorState.currentTool == EditorTool.Shape
 
     Scaffold(
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         topBar = {
             EditorTopBar(
-                hasBitmap = bitmap != null,
-                hasSelection = editorState.selectedElementId != null,
-                hasElements = editorState.elements.isNotEmpty(),
-                canUndo = canUndo,
-                canRedo = canRedo,
-                onPickImage = onPickImage,
-                onSaveImage = onSaveImage,
+                historyState = historyState,
+                onConfirm = onSaveImage,
                 onUndo = onUndo,
                 onRedo = onRedo,
-                onDeleteSelected = onDeleteSelected,
-                onClearAll = onClearAll
+                onAddImage = onPickImage,
+                onClose = onClose,
+                // Nothing to confirm without an image.
+                showConfirm = bitmap != null,
             )
         }
     ) { paddingValues ->
@@ -166,6 +165,16 @@ internal fun PhotoEditorScreen(
                         .fillMaxSize()
                         .pointerInput(Unit) {
                             detectTapGestures { onToolSelected(EditorTool.None) }
+                        }
+                )
+            }
+
+            if (showEmojiPicker) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .pointerInput(Unit) {
+                            detectTapGestures { showEmojiPicker = false }
                         }
                 )
             }
@@ -195,7 +204,9 @@ internal fun PhotoEditorScreen(
                         onClose = {
                             onDeselect()
                             onToolSelected(EditorTool.None)
-                        }
+                        },
+                        onDelete = if (selected != null) onDeleteSelected else null,
+                        swatchColors = swatchColors,
                     )
                 }
             }
@@ -218,7 +229,26 @@ internal fun PhotoEditorScreen(
                         onAddShape()
                         onToolSelected(EditorTool.None)
                     },
-                    onDismiss = { onToolSelected(EditorTool.None) }
+                    onDismiss = { onToolSelected(EditorTool.None) },
+                    swatchColors = swatchColors,
+                )
+            }
+
+            AnimatedVisibility(
+                visible = showEmojiPicker,
+                enter = slideInVertically { it } + fadeIn(),
+                exit = slideOutVertically { it } + fadeOut(),
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = ToolbarHeight)
+            ) {
+                EmojiToolPanel(
+                    onEmojiSelected = { emoji ->
+                        onAddEmoji(emoji)
+                        showEmojiPicker = false
+                    },
+                    onDismiss = { showEmojiPicker = false },
+                    emojis = emojis,
                 )
             }
 
@@ -246,23 +276,20 @@ internal fun PhotoEditorScreen(
 
     if (showTextDialog) {
         TextInputDialog(
-            onDismiss = { showTextDialog = false },
-            onConfirm = { text ->
-                onAddText(text, textDialogPosition)
+            onDismiss = {
                 showTextDialog = false
+                onToolSelected(EditorTool.None)
+            },
+            onConfirm = { text ->
+                showTextDialog = false
+                // Reset the tool BEFORE adding: selectTool clears the selection,
+                // and onAddText selects the new text so the style sheet opens.
+                onToolSelected(EditorTool.None)
+                onAddText(text, textDialogPosition)
             }
         )
     }
 
-    if (showEmojiPicker) {
-        EmojiPickerDialog(
-            onDismiss = { showEmojiPicker = false },
-            onPick = { emoji ->
-                onAddEmoji(emoji)
-                showEmojiPicker = false
-            }
-        )
-    }
 }
 
 private fun EditorState.toStyleContext(
@@ -321,106 +348,81 @@ private fun EditorState.toStyleContext(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun EditorTopBar(
-    hasBitmap: Boolean,
-    hasSelection: Boolean,
-    hasElements: Boolean,
-    canUndo: Boolean,
-    canRedo: Boolean,
-    onPickImage: (() -> Unit)?,
-    onSaveImage: () -> Unit,
-    onUndo: () -> Unit,
-    onRedo: () -> Unit,
-    onDeleteSelected: () -> Unit,
-    onClearAll: () -> Unit
-) {
-    TopAppBar(
-        title = { },
-        navigationIcon = {
-            if (hasBitmap) {
-                IconButton(onClick = onSaveImage) {
-                    Icon(
-                        Icons.Rounded.CheckCircle,
-                        contentDescription = "Save",
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(30.dp)
-                        )
-                }
-            }
-
-        },
-        actions = {
-
-            if (onPickImage != null) {
-                IconButton(onClick = onPickImage) {
-                    Icon(Icons.Default.Add, contentDescription = "Pick Image")
-                }
-            }
-
-            IconButton(onClick = onUndo, enabled = canUndo) {
-                Icon(
-                    Icons.AutoMirrored.Filled.ArrowForward,
-                    contentDescription = "Undo",
-                    tint = if (canUndo) MaterialTheme.colorScheme.onSurface
-                    else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
-                )
-            }
-            IconButton(onClick = onRedo, enabled = canRedo) {
-                Icon(
-                    Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Redo",
-                    tint = if (canRedo) MaterialTheme.colorScheme.onSurface
-                    else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
-                )
-            }
-            if (hasSelection) {
-                IconButton(onClick = onDeleteSelected) {
-                    Icon(Icons.Default.Delete, contentDescription = "Delete")
-                }
-            }
-            if (hasElements) {
-                IconButton(onClick = onClearAll) {
-                    Icon(Icons.Default.Clear, contentDescription = "Clear All")
-                }
-            }
-        }
-    )
-}
-
 @Composable
 private fun EmptyState(onPickImage: (() -> Unit)?) {
+    val colors = LocalPhotoEditorColors.current
+    val typography = LocalPhotoEditorTypography.current
     Column(
         modifier = Modifier.fillMaxSize(),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Icon(
-            Icons.Default.CheckCircle,
-            contentDescription = null,
-            modifier = Modifier.size(120.dp),
-            tint = MaterialTheme.colorScheme.primary
-        )
+        Box(
+            modifier = Modifier
+                .size(96.dp)
+                .background(colors.surfaceVariant, CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = EditorIcons.ImagePlaceholder,
+                contentDescription = null,
+                modifier = Modifier.size(48.dp),
+                tint = colors.onSurfaceVariant
+            )
+        }
         Spacer(modifier = Modifier.height(16.dp))
         Text(
             "No image selected",
-            style = MaterialTheme.typography.headlineSmall,
-            color = MaterialTheme.colorScheme.onSurface
+            style = typography.screenTitle,
+            color = colors.onSurface
         )
         if (onPickImage != null) {
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                "Tap the image icon above to pick a photo",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                "Pick a photo to start editing",
+                style = typography.bodySecondary,
+                color = colors.onSurfaceVariant
             )
             Spacer(modifier = Modifier.height(24.dp))
-            Button(onClick = onPickImage) {
-                Icon(Icons.Default.Add, contentDescription = null)
+            // Accent pill matching the panels' Done button.
+            Row(
+                modifier = Modifier
+                    .background(colors.accent, RoundedCornerShape(20.dp))
+                    .clickable(role = Role.Button, onClick = onPickImage)
+                    .padding(horizontal = 24.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = EditorIcons.AddPhoto,
+                    contentDescription = null,
+                    tint = colors.onAccent,
+                    modifier = Modifier.size(18.dp)
+                )
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Pick Image")
+                Text(
+                    "Pick Image",
+                    style = typography.button,
+                    color = colors.onAccent
+                )
             }
         }
+    }
+}
+
+// ── Previews ──────────────────────────────────────────────────────────────────
+
+@Preview(name = "Empty state, light", showBackground = true)
+@Composable
+private fun EmptyStateLightPreview() {
+    PhotoEditorTheme(colors = lightPhotoEditorColors()) {
+        EmptyState(onPickImage = {})
+    }
+}
+
+@Preview(name = "Empty state, dark", showBackground = true, backgroundColor = 0xFF000000)
+@Composable
+private fun EmptyStateDarkPreview() {
+    PhotoEditorTheme(colors = darkPhotoEditorColors()) {
+        EmptyState(onPickImage = {})
     }
 }

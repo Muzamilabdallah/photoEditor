@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.util.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
@@ -18,6 +19,7 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.sp
 import com.muzamil.photoeditor.domain.EditElement
+import com.muzamil.photoeditor.domain.EditorHistoryState
 import com.muzamil.photoeditor.domain.EditorShape
 import com.muzamil.photoeditor.domain.EditorState
 import com.muzamil.photoeditor.domain.EditorTool
@@ -73,6 +75,14 @@ class PhotoEditorState internal constructor(
     var canRedo: Boolean by mutableStateOf(false)
         private set
 
+    /**
+     * [canUndo] and [canRedo] bundled as one immutable value, for UIs that
+     * take history availability as a single parameter (e.g. `EditorTopBar`).
+     */
+    val historyState: EditorHistoryState by derivedStateOf {
+        EditorHistoryState(canUndo = canUndo, canRedo = canRedo)
+    }
+
     /** Location of the last successful save (uri string or file path), until acknowledged. */
     var saveSuccess: String? by mutableStateOf(null)
         private set
@@ -107,18 +117,22 @@ class PhotoEditorState internal constructor(
 
     // ── Text ──────────────────────────────────────────────────────────────────
 
-    fun addText(text: String, position: Offset = Offset(0.5f, 0.5f)) {
-        addElement(
-            EditElement.Text(
-                text = text,
-                offsetRatioX = position.x,
-                offsetRatioY = position.y,
-                color = editorState.textColor,
-                fontSize = 28.sp,
-                fontWeight = FontWeight.Bold,
-                zIndex = editorState.elements.size,
-            )
+    /**
+     * Adds a text element and returns its id, so callers can immediately
+     * [selectElement] it (e.g. to open a style panel bound to the new text).
+     */
+    fun addText(text: String, position: Offset = Offset(0.5f, 0.5f)): String {
+        val element = EditElement.Text(
+            text = text,
+            offsetRatioX = position.x,
+            offsetRatioY = position.y,
+            color = editorState.textColor,
+            fontSize = 28.sp,
+            fontWeight = FontWeight.Bold,
+            zIndex = editorState.elements.size,
         )
+        addElement(element)
+        return element.id
     }
 
     fun updateTextContent(elementId: String, newText: String) {

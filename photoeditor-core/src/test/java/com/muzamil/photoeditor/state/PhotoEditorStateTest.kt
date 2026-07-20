@@ -5,6 +5,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.sp
 import com.muzamil.photoeditor.domain.EditElement
+import com.muzamil.photoeditor.domain.EditorHistoryState
 import com.muzamil.photoeditor.domain.EditorShape
 import com.muzamil.photoeditor.domain.EditorTool
 import kotlinx.coroutines.CoroutineScope
@@ -209,6 +210,20 @@ class PhotoEditorStateTest {
         state.redo()
         assertTrue(state.canUndo)
         assertFalse(state.canRedo)
+    }
+
+    @Test
+    fun `historyState mirrors the undo and redo flags`() {
+        assertEquals(EditorHistoryState(canUndo = false, canRedo = false), state.historyState)
+
+        state.addText("t")
+        assertEquals(EditorHistoryState(canUndo = true, canRedo = false), state.historyState)
+
+        state.undo()
+        assertEquals(EditorHistoryState(canUndo = false, canRedo = true), state.historyState)
+
+        state.redo()
+        assertEquals(EditorHistoryState(canUndo = true, canRedo = false), state.historyState)
     }
 
     // ── Styles ────────────────────────────────────────────────────────────────

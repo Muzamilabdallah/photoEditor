@@ -24,6 +24,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.muzamil.photoeditor.domain.EditorColors
 import com.muzamil.photoeditor.ui.theme.LocalPhotoEditorColors
+import com.muzamil.photoeditor.ui.theme.PhotoEditorDefaults
 
 /**
  * The one selection language for colors, shared by every tool panel:
@@ -37,7 +38,7 @@ internal fun ColorSwatchRow(
     selected: Color,
     onSelect: (Color) -> Unit,
     modifier: Modifier = Modifier,
-    colors: List<Color> = EditorColors.Palette,
+    colors: List<Color> = PhotoEditorDefaults.swatchColors,
 ) {
     FlowRow(
         modifier = modifier.fillMaxWidth(),
@@ -87,8 +88,9 @@ private fun ColorSwatch(
                 Icon(
                     imageVector = Icons.Default.Check,
                     contentDescription = null,
-                    // Dark check on light swatches (white, yellow), white elsewhere.
-                    tint = if (color.luminance() > 0.6f) Color(0xFF111111) else Color.White,
+                    // Computed contrast so any consumer-supplied color works
+                    // (pastels, neons), not just the built-in palette.
+                    tint = if (color.luminance() > 0.5f) Color.Black else Color.White,
                     modifier = Modifier.size(16.dp),
                 )
             }

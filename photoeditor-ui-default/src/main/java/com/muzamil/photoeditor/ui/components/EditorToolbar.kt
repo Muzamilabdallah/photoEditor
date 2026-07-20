@@ -25,10 +25,10 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.muzamil.photoeditor.domain.EditorTool
 import com.muzamil.photoeditor.ui.theme.LocalPhotoEditorColors
 import com.muzamil.photoeditor.ui.theme.LocalPhotoEditorShapes
+import com.muzamil.photoeditor.ui.theme.LocalPhotoEditorTypography
 
 /**
  * The bottom tool nav: four equal-width tabs sharing the panels' selection
@@ -120,7 +120,7 @@ private fun ToolTab(
         }
         Text(
             text = label,
-            fontSize = 11.sp,
+            style = LocalPhotoEditorTypography.current.chipLabel,
             fontWeight = if (isSelected) FontWeight.Medium else FontWeight.Normal,
             color = tint,
         )

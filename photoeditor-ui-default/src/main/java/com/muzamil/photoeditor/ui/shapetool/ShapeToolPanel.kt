@@ -46,7 +46,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.muzamil.photoeditor.canvas.EditorShapePaths
 import com.muzamil.photoeditor.domain.EditorColors
 import com.muzamil.photoeditor.domain.EditorShape
@@ -54,6 +53,8 @@ import com.muzamil.photoeditor.domain.ShapeToolState
 import com.muzamil.photoeditor.ui.components.ColorSwatchRow
 import com.muzamil.photoeditor.ui.theme.LocalPhotoEditorColors
 import com.muzamil.photoeditor.ui.theme.LocalPhotoEditorShapes
+import com.muzamil.photoeditor.ui.theme.LocalPhotoEditorTypography
+import com.muzamil.photoeditor.ui.theme.PhotoEditorDefaults
 import com.muzamil.photoeditor.ui.theme.PhotoEditorTheme
 import com.muzamil.photoeditor.ui.theme.darkPhotoEditorColors
 import com.muzamil.photoeditor.ui.theme.lightPhotoEditorColors
@@ -78,6 +79,7 @@ fun ShapeToolPanel(
     onDone: () -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
+    swatchColors: List<Color> = PhotoEditorDefaults.swatchColors,
 ) {
     val colors = LocalPhotoEditorColors.current
     val shapes = LocalPhotoEditorShapes.current
@@ -98,7 +100,11 @@ fun ShapeToolPanel(
         ShapeGrid(selected = state.selectedShape, onShapeSelected = onShapeSelected)
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             SectionLabel("Color")
-            ColorSwatchRow(selected = state.selectedColor, onSelect = onColorSelected)
+            ColorSwatchRow(
+                selected = state.selectedColor,
+                onSelect = onColorSelected,
+                colors = swatchColors,
+            )
         }
         StrokeControl(
             strokeWidthPx = state.strokeWidthPx,
@@ -127,8 +133,7 @@ private fun PanelHeader(onDone: () -> Unit, onDismiss: () -> Unit) {
         }
         Text(
             text = "Shape",
-            fontSize = 15.sp,
-            fontWeight = FontWeight.Medium,
+            style = LocalPhotoEditorTypography.current.panelTitle,
             color = colors.onSurface,
             modifier = Modifier.align(Alignment.Center),
         )
@@ -148,8 +153,7 @@ private fun PanelHeader(onDone: () -> Unit, onDismiss: () -> Unit) {
             ) {
                 Text(
                     text = "Done",
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium,
+                    style = LocalPhotoEditorTypography.current.button,
                     color = colors.onAccent,
                 )
             }
@@ -228,7 +232,7 @@ private fun ShapeChip(
         }
         Text(
             text = shape.label(),
-            fontSize = 11.sp,
+            style = LocalPhotoEditorTypography.current.chipLabel,
             fontWeight = if (isSelected) FontWeight.Medium else FontWeight.Normal,
             color = tint,
         )
@@ -267,8 +271,7 @@ private fun StrokeControl(
             ) {
                 Text(
                     text = "${strokeWidthPx.roundToInt()} px",
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Medium,
+                    style = LocalPhotoEditorTypography.current.valueLabel,
                     color = colors.onAccentContainer,
                 )
             }
@@ -309,13 +312,12 @@ private fun FilledToggleRow(
             Column {
                 Text(
                     text = "Fill shape",
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium,
+                    style = LocalPhotoEditorTypography.current.body,
                     color = colors.onSurface,
                 )
                 Text(
                     text = "Solid instead of outline",
-                    fontSize = 12.sp,
+                    style = LocalPhotoEditorTypography.current.bodySecondary,
                     color = colors.onSurfaceVariant,
                 )
             }
@@ -378,7 +380,7 @@ private fun FillToggle(
 private fun SectionLabel(text: String) {
     Text(
         text = text,
-        fontSize = 12.sp,
+        style = LocalPhotoEditorTypography.current.sectionLabel,
         color = LocalPhotoEditorColors.current.onSurfaceVariant,
     )
 }

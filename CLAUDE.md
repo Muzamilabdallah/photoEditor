@@ -8,7 +8,7 @@ WhatsApp-style photo editor delivered as **two published Android libraries** plu
 
 - `:photoeditor-core` — the UI-agnostic engine: canvas composable, element model, gestures, undo/redo, state holder, export. **No material3 dependency** — keep it that way; Mode A consumers must not inherit Material. Gradle namespace `com.muzamil.photoeditor.core`.
 - `:photoeditor-ui-default` — the optional built-in UI: tool panels, bottom nav, top bar, token-based theme. Depends on core via `api` (consumers get core types transitively). Namespace `com.muzamil.photoeditor.uidefault`. **Dependency direction is one-way (`ui-default → core`), never the reverse.**
-- `:app` — demo consumer with two sample screens: `DefaultUiSample` (Mode B, built-in UI) and `CustomUiSample` (Mode A, hand-rolled toolbar over core only — keep its imports core-only; it exists to prove the core API is sufficient).
+- `:app` — demo consumer with three sample screens: `DefaultUiSample` (Mode B, built-in UI), `CustomizedUiSample` (Mode B with custom emojis/swatches + `colorsFromMaterialTheme()` bridge), and `CustomUiSample` (Mode A, hand-rolled toolbar over core only — keep its imports core-only; it exists to prove the core API is sufficient).
 
 All three share Kotlin package root `com.muzamil.photoeditor.*` (fine — AGP namespaces differ, so R classes don't collide), but `internal` visibility does NOT cross module boundaries: ui-default can only use core's public API.
 
@@ -78,12 +78,14 @@ This invariant lets the same coordinates render correctly at any Compose canvas 
 
 ### `:photoeditor-ui-default` layout (`src/main/java/com/muzamil/photoeditor/ui/`)
 
-- `PhotoEditor.kt` — public entry: theme + host; optional `colors` param for token overrides.
-- `PhotoEditorScreen.kt` — Scaffold, top bar, panel orchestration; takes `canvasContent` slot. `internal`.
+- `PhotoEditor.kt` — public entry: theme + host; optional `colors`/`typography` token overrides, `onClose` (null hides the close button), `emojis`, `swatchColors`.
+- `PhotoEditorScreen.kt` — Scaffold, panel orchestration, empty state; takes `canvasContent` slot. `internal`.
 - `EditorHost.kt` — `EditorHostContent` adapter (internal): state holder → screen params + canvas slot.
 - `shapetool/ShapeToolPanel.kt` — **public** stateless Shape panel (header, 4-column shape grid, color swatches, stroke slider + live px pill, fill toggle) + `@Preview`s (light/dark/selection states). Binds to core's `ShapeToolState` via callbacks only.
-- `components/` — `EditorToolbar.kt` (bottom nav tabs), `EditorStylePanel.kt` (Text/Emoji/Draw/selected-element styling), `ColorSwatches.kt` (`ColorSwatchRow` — THE shared selection language for colors: 34dp swatch, double ring + checkmark), `TextInputDialog.kt`, `EmojiPickerDialog.kt`. All `internal`.
-- `theme/PhotoEditorTheme.kt` — public tokens: `PhotoEditorColors` (9 slots), `PhotoEditorShapes`, `LocalPhotoEditorColors`/`LocalPhotoEditorShapes`, `lightPhotoEditorColors()`/`darkPhotoEditorColors()`, `PhotoEditorTheme(colors, shapes)`. Derives an internal Material colorScheme from the tokens so M3 dialogs/sliders match. **Zero hardcoded colors in components** — everything reads the locals; keep it that way.
+- `emojitool/EmojiToolPanel.kt` — **public** stateless Emoji panel: grid of tappable strings, `emojis: List<String> = PhotoEditorDefaults.emojis` (any string works — text-sticker shortcut; core is list-agnostic).
+- `components/` — `EditorTopBar.kt` (**public** stateless top bar: accent confirm circle at start; add-image/undo/redo/close utility cluster at end; takes core's `EditorHistoryState`; null `onAddImage`/`onClose` hide the buttons), `EditorToolbar.kt` (bottom nav tabs), `EditorStylePanel.kt` (Text/Emoji/Draw/selected-element styling + delete-selected), `ColorSwatches.kt` (`ColorSwatchRow` — THE shared selection language for colors: 34dp swatch, double ring + checkmark, luminance-computed checkmark contrast), `TextInputDialog.kt`. Internal except `EditorTopBar`.
+- `icons/EditorIcons.kt` — internal hand-built `ImageVector`s (Undo/Redo `autoMirror`, AddPhoto, ImagePlaceholder) so the lib avoids the material-icons-extended dependency; keep it that way.
+- `theme/` — `PhotoEditorTheme.kt` (public tokens: `PhotoEditorColors` (9 slots), `PhotoEditorShapes`, the CompositionLocals, `lightPhotoEditorColors()`/`darkPhotoEditorColors()`, `PhotoEditorTheme(colors, typography, shapes)`; derives an internal Material colorScheme so M3 dialogs/sliders match), `PhotoEditorTypography.kt` (8 text-style tokens, no fontFamily/no color — color comes from `PhotoEditorColors` at call sites), `PhotoEditorDefaults.kt` (`emojis` (Unicode ≤ 13), `swatchColors` = re-export of core's `EditorColors.Palette`, `lightColors()`/`darkColors()`, opt-in `colorsFromMaterialTheme()` bridge — the lib never reads `MaterialTheme` implicitly). **Zero hardcoded colors or sp sizes in components** — everything reads the locals (`grep -rnE "\.sp\b" photoeditor-ui-default/src` must only hit `theme/`); keep it that way.
 
 Design rule: every selectable element (shape chips, swatches, nav tabs) uses one selection language — `accentContainer` bg + `accent` border/tint when selected, `surfaceVariant` + `onSurfaceVariant` when not, with a non-color cue (border width, checkmark, label weight).
 
