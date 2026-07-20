@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build all modules
+        run: ./gradlew :photoeditor-core:assembleDebug :photoeditor-ui-default:assembleDebug :app:assembleDebug
+
+      - name: Unit tests
+        run: ./gradlew :photoeditor-core:testDebugUnitTest :app:testDebugUnitTest
+
+      - name: Lint
+        run: ./gradlew :photoeditor-core:lintDebug :photoeditor-ui-default:lintDebug :app:lintDebug
+
+      - name: Verify publishing
+        run: ./gradlew :photoeditor-core:publishToMavenLocal :photoeditor-ui-default:publishToMavenLocal
+
+      - name: Upload lint reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lint-reports
+          path: '**/build/reports/lint-results-*.html'
