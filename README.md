@@ -1,5 +1,7 @@
 # photoEditor
 
+[![Release](https://jitpack.io/v/Muzamilabdallah/photoEditor.svg)](https://jitpack.io/#Muzamilabdallah/photoEditor)
+
 WhatsApp-style photo editor for Android, built with Jetpack Compose and published as **two independently installable artifacts**:
 
 - **`photoeditor-core`** — the UI-agnostic engine: the editing canvas composable, element model, gestures, undo/redo, state holder, and export. Zero Material dependency, no opinion about how panels look.
