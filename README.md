@@ -21,15 +21,15 @@ dependencyResolutionManagement {
 }
 ```
 
-Then pick one of two modes (see [jitpack.io/#Muzamilabdallah/photoEditor](https://jitpack.io/#Muzamilabdallah/photoEditor) for the latest tag):
+Then pick one of two modes. The current release is **`1.0.0`** (see [jitpack.io/#Muzamilabdallah/photoEditor](https://jitpack.io/#Muzamilabdallah/photoEditor) for newer tags):
 
 ```kotlin
 // Mode A — canvas only, you build your own toolbar UI
-implementation("com.github.Muzamilabdallah.photoEditor:photoeditor-core:<tag>")
+implementation("com.github.Muzamilabdallah.photoEditor:photoeditor-core:1.0.0")
 
 // Mode B — canvas + built-in panels (Shape, Text, Draw, Emoji)
-implementation("com.github.Muzamilabdallah.photoEditor:photoeditor-core:<tag>")
-implementation("com.github.Muzamilabdallah.photoEditor:photoeditor-ui-default:<tag>")
+implementation("com.github.Muzamilabdallah.photoEditor:photoeditor-core:1.0.0")
+implementation("com.github.Muzamilabdallah.photoEditor:photoeditor-ui-default:1.0.0")
 ```
 
 **Which mode?** Pick **Mode B** if you want a working editor in one composable — `PhotoEditor(...)` ships the panels, toolbar, and theming, and you can restyle it with a few `PhotoEditorTheme` tokens (see [THEMING.md](THEMING.md)). Pick **Mode A** when the editor must match your app's own design system exactly: you get `PhotoEditorCanvas` (the full gesture-handling editing surface) plus all state types (`PhotoEditorState`, `EditorShape`, `ShapeToolState`, `EditorColors`), and every pixel of chrome is yours. `ui-default` declares core as an `api` dependency, so in Mode B the single `photoeditor-ui-default` line would suffice — listing both just makes the coupling explicit.
