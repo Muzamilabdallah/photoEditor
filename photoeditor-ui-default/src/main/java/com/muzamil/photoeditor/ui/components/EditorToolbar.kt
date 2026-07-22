@@ -5,9 +5,14 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Create
@@ -48,6 +53,12 @@ internal fun EditorToolbar(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                // Background bleeds behind the gesture/nav bar (and keyboard,
+                // via safeDrawing's ime part); the tabs pad above it.
+                .windowInsetsPadding(
+                    WindowInsets.safeDrawing
+                        .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)
+                )
                 .padding(horizontal = 8.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {

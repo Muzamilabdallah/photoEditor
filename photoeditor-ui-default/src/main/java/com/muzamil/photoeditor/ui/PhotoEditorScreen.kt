@@ -14,16 +14,20 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -37,6 +41,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.Role
@@ -51,6 +56,8 @@ import com.muzamil.photoeditor.domain.EditorTool
 import com.muzamil.photoeditor.ui.components.EditorStylePanel
 import com.muzamil.photoeditor.ui.components.EditorToolbar
 import com.muzamil.photoeditor.ui.components.EditorTopBar
+import com.muzamil.photoeditor.ui.components.EditorTopBarHeight
+import com.muzamil.photoeditor.ui.components.SelectionActionsOverlay
 import com.muzamil.photoeditor.ui.components.StyleContext
 import com.muzamil.photoeditor.ui.components.TextInputDialog
 import com.muzamil.photoeditor.ui.emojitool.EmojiToolPanel
@@ -69,6 +76,7 @@ internal fun PhotoEditorScreen(
     bitmap: Bitmap?,
     editorState: EditorState,
     historyState: EditorHistoryState,
+    selectedElementBounds: Rect?,
     saveSuccess: String?,
     onSaveSuccessShown: () -> Unit,
     onPickImage: (() -> Unit)?,
@@ -81,6 +89,8 @@ internal fun PhotoEditorScreen(
     onUpdateShapeTool: (EditorShape?, Color?, Float?, Boolean?) -> Unit,
     onDeselect: () -> Unit,
     onDeleteSelected: () -> Unit,
+    onDuplicateSelected: () -> Unit,
+    onUpdateTextContent: (String, String) -> Unit,
     onUndo: () -> Unit,
     onRedo: () -> Unit,
     emojis: List<String>,
@@ -99,6 +109,7 @@ internal fun PhotoEditorScreen(
 ) {
     var showTextDialog by remember { mutableStateOf(false) }
     var showEmojiPicker by remember { mutableStateOf(false) }
+    var editingText by remember { mutableStateOf<EditElement.Text?>(null) }
     val textDialogPosition by remember { mutableStateOf(Offset(0.5f, 0.5f)) }
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -133,144 +144,190 @@ internal fun PhotoEditorScreen(
     val showStylePanel = (toolIsDrawing || selectionIsStyleable) && styleContext != null
     val showShapePanel = editorState.currentTool == EditorTool.Shape
 
-    Scaffold(
-        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
-        topBar = {
-            EditorTopBar(
-                historyState = historyState,
-                onConfirm = onSaveImage,
-                onUndo = onUndo,
-                onRedo = onRedo,
-                onAddImage = onPickImage,
-                onClose = onClose,
-                // Nothing to confirm without an image.
-                showConfirm = bitmap != null,
+    // Panels, snackbars, and the pill clear the toolbar plus whatever bottom
+    // insets it consumed (gesture bar, keyboard).
+    val bottomInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom)
+
+    Box(modifier = modifier.fillMaxSize()) {
+        // The canvas is deliberately full-bleed — edge-to-edge behind the
+        // bars; only the interactive chrome pads for insets.
+        if (bitmap == null) {
+            EmptyState(onPickImage = onPickImage)
+        } else {
+            canvasContent()
+        }
+
+        if (showShapePanel) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .pointerInput(Unit) {
+                        detectTapGestures { onToolSelected(EditorTool.None) }
+                    }
             )
         }
-    ) { paddingValues ->
-        Box(
-            modifier = modifier
-                .fillMaxSize()
-                .padding(paddingValues)
+
+        if (showEmojiPicker) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .pointerInput(Unit) {
+                        detectTapGestures { showEmojiPicker = false }
+                    }
+            )
+        }
+
+        if (editorState.isLoading) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.5f)),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator(color = Color.White)
+            }
+        }
+
+        AnimatedVisibility(
+            visible = showStylePanel,
+            enter = slideInVertically { it } + fadeIn(),
+            exit = slideOutVertically { it } + fadeOut(),
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .windowInsetsPadding(bottomInsets)
+                .padding(bottom = ToolbarHeight)
         ) {
-            if (bitmap == null) {
-                EmptyState(onPickImage = onPickImage)
-            } else {
-                canvasContent()
-            }
-
-            if (showShapePanel) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .pointerInput(Unit) {
-                            detectTapGestures { onToolSelected(EditorTool.None) }
-                        }
-                )
-            }
-
-            if (showEmojiPicker) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .pointerInput(Unit) {
-                            detectTapGestures { showEmojiPicker = false }
-                        }
-                )
-            }
-
-            if (editorState.isLoading) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.5f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator(color = Color.White)
-                }
-            }
-
-            AnimatedVisibility(
-                visible = showStylePanel,
-                enter = slideInVertically { it } + fadeIn(),
-                exit = slideOutVertically { it } + fadeOut(),
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = ToolbarHeight)
-            ) {
-                styleContext?.let { ctx ->
-                    EditorStylePanel(
-                        context = ctx,
-                        onClose = {
-                            onDeselect()
-                            onToolSelected(EditorTool.None)
-                        },
-                        onDelete = if (selected != null) onDeleteSelected else null,
-                        swatchColors = swatchColors,
-                    )
-                }
-            }
-
-            AnimatedVisibility(
-                visible = showShapePanel,
-                enter = slideInVertically { it } + fadeIn(),
-                exit = slideOutVertically { it } + fadeOut(),
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = ToolbarHeight)
-            ) {
-                ShapeToolPanel(
-                    state = editorState.shapeTool,
-                    onShapeSelected = { onUpdateShapeTool(it, null, null, null) },
-                    onColorSelected = { onUpdateShapeTool(null, it, null, null) },
-                    onStrokeWidthChanged = { onUpdateShapeTool(null, null, it, null) },
-                    onFilledChanged = { onUpdateShapeTool(null, null, null, it) },
-                    onDone = {
-                        onAddShape()
-                        onToolSelected(EditorTool.None)
+            styleContext?.let { ctx ->
+                EditorStylePanel(
+                    context = ctx,
+                    // Selected elements deselect by tapping the canvas and act
+                    // through the selection pill — no header for them.
+                    onClose = if (selectionIsStyleable) null else {
+                        { onToolSelected(EditorTool.None) }
                     },
-                    onDismiss = { onToolSelected(EditorTool.None) },
                     swatchColors = swatchColors,
                 )
             }
+        }
 
-            AnimatedVisibility(
-                visible = showEmojiPicker,
-                enter = slideInVertically { it } + fadeIn(),
-                exit = slideOutVertically { it } + fadeOut(),
+        AnimatedVisibility(
+            visible = showShapePanel,
+            enter = slideInVertically { it } + fadeIn(),
+            exit = slideOutVertically { it } + fadeOut(),
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .windowInsetsPadding(bottomInsets)
+                .padding(bottom = ToolbarHeight)
+        ) {
+            ShapeToolPanel(
+                state = editorState.shapeTool,
+                onShapeSelected = { onUpdateShapeTool(it, null, null, null) },
+                onColorSelected = { onUpdateShapeTool(null, it, null, null) },
+                onStrokeWidthChanged = { onUpdateShapeTool(null, null, it, null) },
+                onFilledChanged = { onUpdateShapeTool(null, null, null, it) },
+                onDone = {
+                    // Reset the tool BEFORE adding: selectTool clears the
+                    // selection, and onAddShape selects the new shape so it
+                    // comes up ready to move/style.
+                    onToolSelected(EditorTool.None)
+                    onAddShape()
+                },
+                onDismiss = { onToolSelected(EditorTool.None) },
+                // Swallow taps that land on the panel's empty areas so they
+                // don't fall through to the dismiss scrim behind it.
+                modifier = Modifier.pointerInput(Unit) { detectTapGestures {} },
+                swatchColors = swatchColors,
+            )
+        }
+
+        AnimatedVisibility(
+            visible = showEmojiPicker,
+            enter = slideInVertically { it } + fadeIn(),
+            exit = slideOutVertically { it } + fadeOut(),
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .windowInsetsPadding(bottomInsets)
+                .padding(bottom = ToolbarHeight)
+        ) {
+            EmojiToolPanel(
+                onEmojiSelected = { emoji ->
+                    onAddEmoji(emoji)
+                    showEmojiPicker = false
+                },
+                onDismiss = { showEmojiPicker = false },
+                // Swallow taps on the panel's empty areas so they don't fall
+                // through to the dismiss scrim behind it.
+                modifier = Modifier.pointerInput(Unit) { detectTapGestures {} },
+                emojis = emojis,
+            )
+        }
+
+        EditorToolbar(
+            currentTool = editorState.currentTool,
+            // Only one tool sheet is ever open: switching tools closes the
+            // emoji picker, and opening the emoji picker resets the tool
+            // (which closes the shape/style panels and clears any selection).
+            onToolSelected = { tool ->
+                showEmojiPicker = false
+                if (tool == EditorTool.Text) showTextDialog = true
+                onToolSelected(tool)
+            },
+            onEmojiClick = {
+                onToolSelected(EditorTool.None)
+                showEmojiPicker = true
+            },
+            onShapeClick = {
+                showEmojiPicker = false
+                onToolSelected(EditorTool.Shape)
+            },
+            modifier = Modifier.align(Alignment.BottomCenter)
+        )
+
+        // Contextual actions anchored to the selected element. Fills the same
+        // box as the canvas so the reported bounds line up 1:1.
+        if (bitmap != null && selected != null && selectedElementBounds != null) {
+            SelectionActionsOverlay(
+                bounds = selectedElementBounds,
+                onDuplicate = onDuplicateSelected,
+                onDelete = onDeleteSelected,
+                onEdit = (selected as? EditElement.Text)?.let { text ->
+                    { editingText = text }
+                },
+                chromeTop = EditorTopBarHeight,
+                chromeBottom = ToolbarHeight,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+
+        // Drawn after the scrims so it stays tappable while panels are open.
+        EditorTopBar(
+            historyState = historyState,
+            onConfirm = onSaveImage,
+            onUndo = onUndo,
+            onRedo = onRedo,
+            onAddImage = onPickImage,
+            onClose = onClose,
+            // Nothing to confirm without an image.
+            showConfirm = bitmap != null,
+            modifier = Modifier.align(Alignment.TopCenter),
+        )
+
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .windowInsetsPadding(bottomInsets)
+                .padding(bottom = ToolbarHeight)
+        )
+
+        editorState.error?.let { errorMessage ->
+            Snackbar(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
+                    .windowInsetsPadding(bottomInsets)
                     .padding(bottom = ToolbarHeight)
-            ) {
-                EmojiToolPanel(
-                    onEmojiSelected = { emoji ->
-                        onAddEmoji(emoji)
-                        showEmojiPicker = false
-                    },
-                    onDismiss = { showEmojiPicker = false },
-                    emojis = emojis,
-                )
-            }
-
-            EditorToolbar(
-                currentTool = editorState.currentTool,
-                onToolSelected = { tool ->
-                    if (tool == EditorTool.Text) showTextDialog = true
-                    onToolSelected(tool)
-                },
-                onEmojiClick = { showEmojiPicker = true },
-                onShapeClick = { onToolSelected(EditorTool.Shape) },
-                modifier = Modifier.align(Alignment.BottomCenter)
-            )
-
-            editorState.error?.let { errorMessage ->
-                Snackbar(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(bottom = ToolbarHeight)
-                        .padding(16.dp)
-                ) { Text(errorMessage) }
-            }
+                    .padding(16.dp)
+            ) { Text(errorMessage) }
         }
     }
 
@@ -290,6 +347,16 @@ internal fun PhotoEditorScreen(
         )
     }
 
+    editingText?.let { target ->
+        TextInputDialog(
+            initialText = target.text,
+            onDismiss = { editingText = null },
+            onConfirm = { newText ->
+                onUpdateTextContent(target.id, newText)
+                editingText = null
+            }
+        )
+    }
 }
 
 private fun EditorState.toStyleContext(

@@ -6,8 +6,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Fill
@@ -66,15 +64,7 @@ internal fun ShapeElementContent(
                     style = drawStyle
                 )
             }
-
-            if (isSelected) {
-                drawRect(
-                    color = Color.Blue,
-                    topLeft = Offset.Zero,
-                    size = Size(w, h),
-                    style = Stroke(width = 2f)
-                )
-            }
+            // Selection chrome comes from DraggableElement; nothing extra here.
         }
     }
 }

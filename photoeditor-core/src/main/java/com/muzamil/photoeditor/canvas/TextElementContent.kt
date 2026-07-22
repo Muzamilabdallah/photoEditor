@@ -1,7 +1,6 @@
 package com.muzamil.photoeditor.canvas
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
@@ -14,6 +13,10 @@ import com.muzamil.photoeditor.domain.EditElement
 
 // BasicText (not material3.Text): core must stay free of material3 so Mode A
 // consumers don't inherit it.
+
+// Selection chrome (border + corner handles) is drawn by DraggableElement, so
+// all element types share one selection language; content only adds a faint
+// legibility backdrop while selected.
 
 @Composable
 internal fun TextElementContent(
@@ -33,11 +36,6 @@ internal fun TextElementContent(
                 if (isSelected) Color.White.copy(alpha = 0.3f) else Color.Transparent,
                 RoundedCornerShape(4.dp)
             )
-            .border(
-                width = if (isSelected) 2.dp else 0.dp,
-                color = if (isSelected) Color.Blue else Color.Transparent,
-                shape = RoundedCornerShape(4.dp)
-            )
             .padding(8.dp)
     )
 }
@@ -55,11 +53,6 @@ internal fun EmojiElementContent(
             .background(
                 if (isSelected) Color.White.copy(alpha = 0.3f) else Color.Transparent,
                 RoundedCornerShape(4.dp)
-            )
-            .border(
-                width = if (isSelected) 2.dp else 0.dp,
-                color = if (isSelected) Color.Blue else Color.Transparent,
-                shape = RoundedCornerShape(4.dp)
             )
             .padding(8.dp)
     )

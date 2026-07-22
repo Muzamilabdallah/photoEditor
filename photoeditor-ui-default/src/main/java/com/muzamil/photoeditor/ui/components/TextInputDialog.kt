@@ -15,13 +15,15 @@ import androidx.compose.ui.Modifier
 @Composable
 internal fun TextInputDialog(
     onDismiss: () -> Unit,
-    onConfirm: (String) -> Unit
+    onConfirm: (String) -> Unit,
+    initialText: String = "",
 ) {
-    var text by remember { mutableStateOf("") }
+    var text by remember { mutableStateOf(initialText) }
+    val editing = initialText.isNotEmpty()
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Add Text") },
+        title = { Text(if (editing) "Edit Text" else "Add Text") },
         text = {
             TextField(
                 value = text,
@@ -34,7 +36,7 @@ internal fun TextInputDialog(
             TextButton(
                 onClick = { if (text.isNotBlank()) onConfirm(text) }
             ) {
-                Text("Add")
+                Text(if (editing) "Save" else "Add")
             }
         },
         dismissButton = {

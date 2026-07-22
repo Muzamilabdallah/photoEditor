@@ -2,6 +2,7 @@ package com.muzamil.photoeditor.canvas
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import com.muzamil.photoeditor.state.PhotoEditorState
 import com.muzamil.photoeditor.state.rememberPhotoEditorState
 
@@ -33,11 +34,17 @@ import com.muzamil.photoeditor.state.rememberPhotoEditorState
  * a uri — the editor requires a software bitmap. For the batteries-included
  * editor (theme, toolbar, tool panels), add the `photoeditor-ui-default`
  * artifact and use its `PhotoEditor` composable instead.
+ *
+ * [selectionColor] tints the selected element's border and corner handles —
+ * pass your accent color so the selection chrome matches your UI. While an
+ * element is selected, its live screen bounds are published on
+ * [PhotoEditorState.selectedElementBounds] for anchoring contextual UI.
  */
 @Composable
 fun PhotoEditorCanvas(
     state: PhotoEditorState = rememberPhotoEditorState(),
     modifier: Modifier = Modifier,
+    selectionColor: Color = DefaultSelectionColor,
 ) {
     val editorState = state.editorState
     EditorCanvas(
@@ -52,6 +59,11 @@ fun PhotoEditorCanvas(
         onElementTap = state::selectElement,
         onUpdateElement = state::updateElementTransform,
         onContainerSizeChanged = state::setContainerSize,
+        selectionColor = selectionColor,
+        onSelectedBoundsChanged = state::reportSelectedElementBounds,
         modifier = modifier,
     )
 }
+
+/** Matches the blue the canvas used before [selectionColor] was themable. */
+private val DefaultSelectionColor = Color(0xFF2962FF)

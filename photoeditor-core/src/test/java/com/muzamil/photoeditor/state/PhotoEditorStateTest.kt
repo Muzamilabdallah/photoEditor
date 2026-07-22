@@ -76,6 +76,49 @@ class PhotoEditorStateTest {
         assertEquals(2, elements.size)
     }
 
+    @Test
+    fun `duplicateElement copies style and nudges position`() {
+        state.addShape(EditorShape.Star)
+        val original = elements.single() as EditElement.Shape
+
+        val newId = state.duplicateElement(original.id)
+
+        assertEquals(2, elements.size)
+        val copy = elements.last() as EditElement.Shape
+        assertEquals(newId, copy.id)
+        assertTrue(copy.id != original.id)
+        assertEquals(original.kind, copy.kind)
+        assertEquals(original.color, copy.color)
+        assertEquals(original.offsetRatioX + 0.03f, copy.offsetRatioX, 1e-4f)
+        assertEquals(original.offsetRatioY + 0.03f, copy.offsetRatioY, 1e-4f)
+        assertEquals(1, copy.zIndex)
+    }
+
+    @Test
+    fun `duplicateElement is undoable and returns null for unknown ids`() {
+        assertNull(state.duplicateElement("nope"))
+
+        state.addText("t")
+        state.duplicateElement(elements.single().id)
+        assertEquals(2, elements.size)
+
+        state.undo()
+        assertEquals(1, elements.size)
+    }
+
+    @Test
+    fun `duplicateElement nudges drawing points`() {
+        state.startDrawing(Offset(0.1f, 0.2f))
+        state.finishDrawing()
+        val original = elements.single() as EditElement.Drawing
+
+        state.duplicateElement(original.id)
+
+        val copy = elements.last() as EditElement.Drawing
+        assertEquals(0.13f, copy.points.single().x, 1e-4f)
+        assertEquals(0.23f, copy.points.single().y, 1e-4f)
+    }
+
     // ── Drawing ───────────────────────────────────────────────────────────────
 
     @Test
@@ -190,6 +233,29 @@ class PhotoEditorStateTest {
 
         assertEquals(EditorTool.Drawing, editorState.currentTool)
         assertNull(editorState.selectedElementId)
+    }
+
+    @Test
+    fun `selectedElementBounds clears on deselect and delete`() {
+        state.addEmoji("😀")
+        val id = elements.single().id
+        state.selectElement(id)
+        state.reportSelectedElementBounds(androidx.compose.ui.geometry.Rect(0f, 0f, 10f, 10f))
+        assertTrue(state.selectedElementBounds != null)
+
+        state.deselectElement()
+        assertNull(state.selectedElementBounds)
+
+        state.selectElement(id)
+        state.reportSelectedElementBounds(androidx.compose.ui.geometry.Rect(0f, 0f, 10f, 10f))
+        state.deleteElement(id)
+        assertNull(state.selectedElementBounds)
+    }
+
+    @Test
+    fun `bounds reports are ignored without a selection`() {
+        state.reportSelectedElementBounds(androidx.compose.ui.geometry.Rect(0f, 0f, 10f, 10f))
+        assertNull(state.selectedElementBounds)
     }
 
     // ── Undo / redo flags ─────────────────────────────────────────────────────

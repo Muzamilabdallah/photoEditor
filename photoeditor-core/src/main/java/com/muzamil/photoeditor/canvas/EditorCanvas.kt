@@ -18,6 +18,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
@@ -54,6 +55,8 @@ internal fun EditorCanvas(
     onElementTap: (String) -> Unit,
     onUpdateElement: (String, Float, Float, Float, Float) -> Unit,
     onContainerSizeChanged: (IntSize) -> Unit,
+    selectionColor: Color,
+    onSelectedBoundsChanged: (Rect) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val density = LocalDensity.current
@@ -185,12 +188,14 @@ internal fun EditorCanvas(
                                 isSelected = element.id == selectedElementId,
                                 parentWidth = parentWidth,
                                 parentHeight = parentHeight,
+                                selectionColor = selectionColor,
                                 onUpdate = { rx, ry, rot, sc ->
                                     onUpdateElement(element.id, rx, ry, rot, sc)
                                 },
                                 onTap = {
                                     if (currentTool != EditorTool.Drawing) onElementTap(element.id)
-                                }
+                                },
+                                onSelectedBoundsChanged = onSelectedBoundsChanged,
                             ) { selected -> TextElementContent(element, selected) }
 
                             is EditElement.Emoji -> DraggableElement(
@@ -198,12 +203,14 @@ internal fun EditorCanvas(
                                 isSelected = element.id == selectedElementId,
                                 parentWidth = parentWidth,
                                 parentHeight = parentHeight,
+                                selectionColor = selectionColor,
                                 onUpdate = { rx, ry, rot, sc ->
                                     onUpdateElement(element.id, rx, ry, rot, sc)
                                 },
                                 onTap = {
                                     if (currentTool != EditorTool.Drawing) onElementTap(element.id)
-                                }
+                                },
+                                onSelectedBoundsChanged = onSelectedBoundsChanged,
                             ) { selected -> EmojiElementContent(element, selected) }
 
                             is EditElement.Shape -> DraggableElement(
@@ -211,12 +218,14 @@ internal fun EditorCanvas(
                                 isSelected = element.id == selectedElementId,
                                 parentWidth = parentWidth,
                                 parentHeight = parentHeight,
+                                selectionColor = selectionColor,
                                 onUpdate = { rx, ry, rot, sc ->
                                     onUpdateElement(element.id, rx, ry, rot, sc)
                                 },
                                 onTap = {
                                     if (currentTool != EditorTool.Drawing) onElementTap(element.id)
-                                }
+                                },
+                                onSelectedBoundsChanged = onSelectedBoundsChanged,
                             ) { selected ->
                                 ShapeElementContent(
                                     element = element,

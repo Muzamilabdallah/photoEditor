@@ -9,10 +9,15 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
@@ -48,6 +53,11 @@ import com.muzamil.photoeditor.ui.theme.lightPhotoEditorColors
  * (see `PhotoEditorState.historyState`). [onAddImage] and [onClose] follow the
  * library's convention that a null callback hides its affordance. The bar
  * mirrors correctly in RTL layouts.
+ *
+ * In edge-to-edge windows the bar consumes [windowInsets] (status bar and any
+ * display cutout by default) itself, M3-`TopAppBar` style: the background
+ * bleeds behind the status bar while the controls pad below it. Pass
+ * `WindowInsets(0)` if an ancestor already applies these insets.
  */
 @Composable
 fun EditorTopBar(
@@ -59,6 +69,8 @@ fun EditorTopBar(
     onAddImage: (() -> Unit)? = null,
     onClose: (() -> Unit)? = null,
     showConfirm: Boolean = true,
+    windowInsets: WindowInsets = WindowInsets.safeDrawing
+        .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Top),
 ) {
     val colors = LocalPhotoEditorColors.current
     Column(modifier = modifier.fillMaxWidth()) {
@@ -66,7 +78,8 @@ fun EditorTopBar(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(colors.surface)
-                .height(56.dp)
+                .windowInsetsPadding(windowInsets)
+                .height(EditorTopBarHeight)
                 .padding(horizontal = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -105,6 +118,9 @@ fun EditorTopBar(
         HorizontalDivider(thickness = 0.5.dp, color = colors.outline)
     }
 }
+
+/** Content height of [EditorTopBar], excluding any consumed window insets. */
+internal val EditorTopBarHeight = 56.dp
 
 @Composable
 private fun ConfirmButton(onClick: () -> Unit) {

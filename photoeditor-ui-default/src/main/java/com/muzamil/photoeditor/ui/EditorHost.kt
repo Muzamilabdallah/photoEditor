@@ -8,6 +8,7 @@ import androidx.compose.ui.platform.LocalContext
 import com.muzamil.photoeditor.canvas.PhotoEditorCanvas
 import com.muzamil.photoeditor.export.SaveDestination
 import com.muzamil.photoeditor.state.PhotoEditorState
+import com.muzamil.photoeditor.ui.theme.LocalPhotoEditorColors
 import com.muzamil.photoeditor.ui.theme.PhotoEditorDefaults
 
 /**
@@ -31,6 +32,7 @@ internal fun EditorHostContent(
         bitmap = editorState.backgroundBitmap,
         editorState = editorState,
         historyState = state.historyState,
+        selectedElementBounds = state.selectedElementBounds,
         saveSuccess = state.saveSuccess,
         onSaveSuccessShown = state::clearSaveSuccess,
         onToolSelected = state::selectTool,
@@ -38,11 +40,20 @@ internal fun EditorHostContent(
             // Select the new text so the style panel pops up bound to it.
             state.selectElement(state.addText(text, position))
         },
-        onAddEmoji = state::addEmoji,
-        onAddShape = { state.addShape() },
+        // Select the new emoji/shape so they come up ready to move/style,
+        // just like a freshly added text.
+        onAddEmoji = { emoji -> state.selectElement(state.addEmoji(emoji)) },
+        onAddShape = { state.selectElement(state.addShape()) },
         onUpdateShapeTool = state::updateShapeTool,
         onDeselect = state::deselectElement,
         onDeleteSelected = state::deleteSelectedElement,
+        onDuplicateSelected = {
+            // Select the copy so the pill and style panel follow it.
+            editorState.selectedElementId
+                ?.let(state::duplicateElement)
+                ?.let(state::selectElement)
+        },
+        onUpdateTextContent = state::updateTextContent,
         onUndo = state::undo,
         onRedo = state::redo,
         emojis = emojis,
@@ -60,7 +71,11 @@ internal fun EditorHostContent(
         onUpdateSelectedShapeStyle = state::updateSelectedShapeStyle,
         modifier = modifier,
         canvasContent = {
-            PhotoEditorCanvas(state = state, modifier = Modifier.fillMaxSize())
+            PhotoEditorCanvas(
+                state = state,
+                modifier = Modifier.fillMaxSize(),
+                selectionColor = LocalPhotoEditorColors.current.accent,
+            )
         },
     )
 }

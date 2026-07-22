@@ -20,7 +20,7 @@ EditorToolbar(Modifier.align(BottomCenter))
 - PhotoEditorScreen.kt  — remove Scaffold bottomBar, replace content with Box overlay layout
 - EditorCanvas.kt       — already fillMaxSize, no changes needed
 - EditorToolbar.kt      — keep as-is, just positioned at BottomCenter
-- EditorStylePanel.kt   — add semi-transparent background, position above toolbar
+  - EditorStylePanel.kt   — add semi-transparent background, position above toolbar
 - Any new composables you need to extract
 
 ## Style panel (EditorStylePanel) requirements

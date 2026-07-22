@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -60,12 +59,17 @@ internal sealed class StyleContext {
     ) : StyleContext()
 }
 
+/**
+ * Styling controls for the current tool default or the selected element.
+ * [onClose] is null when dismissal is handled elsewhere (selected elements
+ * deselect by tapping the canvas; their actions live in the selection pill),
+ * which hides the header row entirely.
+ */
 @Composable
 internal fun EditorStylePanel(
     context: StyleContext,
-    onClose: () -> Unit,
+    onClose: (() -> Unit)?,
     modifier: Modifier = Modifier,
-    onDelete: (() -> Unit)? = null,
     swatchColors: List<Color> = PhotoEditorDefaults.swatchColors,
 ) {
     val colors = LocalPhotoEditorColors.current
@@ -82,33 +86,22 @@ internal fun EditorStylePanel(
                 .padding(horizontal = 12.dp, vertical = 4.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.End)
-            ) {
-                if (onDelete != null) {
+            if (onClose != null) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
                     IconButton(
-                        onClick = onDelete,
+                        onClick = onClose,
                         modifier = Modifier.size(28.dp)
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Delete,
-                            contentDescription = "Delete element",
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Close style panel",
                             tint = colors.onSurface,
                             modifier = Modifier.size(18.dp)
                         )
                     }
-                }
-                IconButton(
-                    onClick = onClose,
-                    modifier = Modifier.size(28.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = "Close style panel",
-                        tint = colors.onSurface,
-                        modifier = Modifier.size(18.dp)
-                    )
                 }
             }
             when (context) {
