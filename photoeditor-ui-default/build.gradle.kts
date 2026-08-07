@@ -8,7 +8,9 @@ plugins {
 // Project-level coordinates so the generated POM for this module and any
 // module depending on it resolve to the right GAV (see :photoeditor-core).
 group = "com.github.Muzamilabdallah"
-version = "1.0.0"
+// Keep in lockstep with :photoeditor-core — the two artifacts are released
+// together and ui-default's POM pins core at this exact version.
+version = "0.1.0"
 
 android {
     namespace = "com.muzamil.photoeditor.uidefault"
