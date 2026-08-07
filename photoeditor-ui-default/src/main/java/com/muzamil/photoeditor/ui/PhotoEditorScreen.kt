@@ -142,17 +142,21 @@ internal fun PhotoEditorScreen(
     val showStylePanel = (toolIsDrawing || selectionIsStyleable) && styleContext != null
     val showShapePanel = editorState.currentTool == EditorTool.Shape
 
-    // Everything that isn't the image steps aside while a gesture is in flight,
-    // so a stroke or a dragged element is never hidden behind a sheet.
-    // Alpha rather than visibility on purpose: dropping the bars out of the
+    // Chrome that sits *over* the canvas steps aside while a gesture is in
+    // flight, so a stroke or a dragged element is never hidden beneath it.
+    // Only the sheets and the selection pill qualify: the top bar and toolbar
+    // have no canvas behind them, so fading them would reveal nothing but the
+    // host window background — a white flash on every stroke.
+    //
+    // Alpha rather than visibility on purpose: dropping anything out of the
     // layout would resize the canvas mid-gesture, and element offsets are
     // fractions of that container — every element would shift with it.
-    val chromeAlpha = animateFloatAsState(
+    val overlayAlpha = animateFloatAsState(
         targetValue = if (isInteracting) 0f else 1f,
-        label = "chromeAlpha",
+        label = "overlayAlpha",
     )
     // Read inside the layer block so the fade is a draw-phase change only.
-    val chromeFade = Modifier.graphicsLayer { alpha = chromeAlpha.value }
+    val overlayFade = Modifier.graphicsLayer { alpha = overlayAlpha.value }
 
     Box(modifier = modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -169,7 +173,6 @@ internal fun PhotoEditorScreen(
                 onClose = onClose,
                 // Nothing to confirm without an image.
                 showConfirm = bitmap != null,
-                modifier = chromeFade,
             )
 
             Box(
@@ -199,7 +202,7 @@ internal fun PhotoEditorScreen(
                     onEmojiPickerDismissed = { showEmojiPicker = false },
                     emojis = emojis,
                     swatchColors = swatchColors,
-                    modifier = chromeFade,
+                    modifier = overlayFade,
                 )
 
                 // Contextual actions anchored to the selected element. Fills the
@@ -215,7 +218,7 @@ internal fun PhotoEditorScreen(
                         },
                         modifier = Modifier
                             .fillMaxSize()
-                            .then(chromeFade),
+                            .then(overlayFade),
                     )
                 }
 
@@ -251,7 +254,6 @@ internal fun PhotoEditorScreen(
                     showEmojiPicker = false
                     onToolSelected(EditorTool.Shape)
                 },
-                modifier = chromeFade,
             )
         }
 
