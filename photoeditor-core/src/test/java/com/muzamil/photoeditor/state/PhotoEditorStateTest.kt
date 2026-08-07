@@ -341,4 +341,17 @@ class PhotoEditorStateTest {
         state.setContainerSize(IntSize(1080, 1920))
         assertEquals(IntSize(1080, 1920), state.containerSize)
     }
+
+    // ── Interaction ───────────────────────────────────────────────────────────
+
+    @Test
+    fun `isInteracting is false until a gesture is reported`() {
+        assertEquals(false, state.isInteracting)
+
+        state.setInteracting(true)
+        assertEquals(true, state.isInteracting)
+
+        state.setInteracting(false)
+        assertEquals(false, state.isInteracting)
+    }
 }

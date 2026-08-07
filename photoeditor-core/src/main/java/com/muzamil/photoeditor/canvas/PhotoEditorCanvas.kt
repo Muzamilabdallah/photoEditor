@@ -38,7 +38,10 @@ import com.muzamil.photoeditor.state.rememberPhotoEditorState
  * [selectionColor] tints the selected element's border and corner handles —
  * pass your accent color so the selection chrome matches your UI. While an
  * element is selected, its live screen bounds are published on
- * [PhotoEditorState.selectedElementBounds] for anchoring contextual UI.
+ * [PhotoEditorState.selectedElementBounds] for anchoring contextual UI, and
+ * [PhotoEditorState.isInteracting] is true for as long as a canvas gesture is
+ * in flight — fade your own toolbars out while it is set so they never cover
+ * the stroke or element being moved.
  */
 @Composable
 fun PhotoEditorCanvas(
@@ -61,6 +64,7 @@ fun PhotoEditorCanvas(
         onContainerSizeChanged = state::setContainerSize,
         selectionColor = selectionColor,
         onSelectedBoundsChanged = state::reportSelectedElementBounds,
+        onInteractionChanged = state::setInteracting,
         modifier = modifier,
     )
 }

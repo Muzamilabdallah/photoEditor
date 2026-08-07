@@ -28,6 +28,7 @@ internal fun DraggableElement(
     onUpdate: (offsetRatioX: Float, offsetRatioY: Float, rotation: Float, scale: Float) -> Unit,
     onTap: () -> Unit,
     onSelectedBoundsChanged: (Rect) -> Unit,
+    onInteractionChanged: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
     content: @Composable (isSelected: Boolean) -> Unit
 ) {
@@ -78,6 +79,13 @@ internal fun DraggableElement(
             newRotation,
             newScale
         )
+    }
+
+    // Report drag/rotate/scale so the surrounding UI can fade its chrome while
+    // the finger is down. Only the element under the pointer transforms, so the
+    // last writer here is always the active one.
+    LaunchedEffect(transformableState.isTransformInProgress) {
+        onInteractionChanged(transformableState.isTransformInProgress)
     }
 
     // Publish the selected element's axis-aligned screen bounds (the visual

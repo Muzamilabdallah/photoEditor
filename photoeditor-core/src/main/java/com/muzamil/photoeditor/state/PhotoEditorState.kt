@@ -100,6 +100,15 @@ class PhotoEditorState internal constructor(
     var selectedElementBounds: Rect? by mutableStateOf(null)
         private set
 
+    /**
+     * True while a canvas gesture is in flight — a freehand stroke, or an
+     * element drag/rotate/scale. Fade your editor chrome out while this is set
+     * so nothing covers the image mid-gesture; it flips back to false as soon
+     * as the finger lifts. Transient: not retained across process death.
+     */
+    var isInteracting: Boolean by mutableStateOf(false)
+        private set
+
     // Preview container size in device pixels — the exporter derives the crop
     // scale from it. Updated from onSizeChanged in the UI.
     internal var containerSize: IntSize by mutableStateOf(IntSize.Zero)
@@ -127,6 +136,10 @@ class PhotoEditorState internal constructor(
     internal fun setContainerSize(size: IntSize) {
         if (size.width <= 0 || size.height <= 0) return
         containerSize = size
+    }
+
+    internal fun setInteracting(interacting: Boolean) {
+        isInteracting = interacting
     }
 
     // ── Text ──────────────────────────────────────────────────────────────────

@@ -33,6 +33,7 @@ internal fun EditorHostContent(
         editorState = editorState,
         historyState = state.historyState,
         selectedElementBounds = state.selectedElementBounds,
+        isInteracting = state.isInteracting,
         saveSuccess = state.saveSuccess,
         onSaveSuccessShown = state::clearSaveSuccess,
         onToolSelected = state::selectTool,

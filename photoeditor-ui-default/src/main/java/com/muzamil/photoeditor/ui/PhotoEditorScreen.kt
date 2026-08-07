@@ -2,6 +2,7 @@ package com.muzamil.photoeditor.ui
 
 import android.graphics.Bitmap
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -11,19 +12,16 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
@@ -43,6 +41,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.tooling.preview.Preview
@@ -53,10 +52,10 @@ import com.muzamil.photoeditor.domain.EditorHistoryState
 import com.muzamil.photoeditor.domain.EditorShape
 import com.muzamil.photoeditor.domain.EditorState
 import com.muzamil.photoeditor.domain.EditorTool
+import com.muzamil.photoeditor.domain.ShapeToolState
 import com.muzamil.photoeditor.ui.components.EditorStylePanel
 import com.muzamil.photoeditor.ui.components.EditorToolbar
 import com.muzamil.photoeditor.ui.components.EditorTopBar
-import com.muzamil.photoeditor.ui.components.EditorTopBarHeight
 import com.muzamil.photoeditor.ui.components.SelectionActionsOverlay
 import com.muzamil.photoeditor.ui.components.StyleContext
 import com.muzamil.photoeditor.ui.components.TextInputDialog
@@ -69,14 +68,13 @@ import com.muzamil.photoeditor.ui.theme.PhotoEditorTheme
 import com.muzamil.photoeditor.ui.theme.darkPhotoEditorColors
 import com.muzamil.photoeditor.ui.theme.lightPhotoEditorColors
 
-private val ToolbarHeight = 72.dp
-
 @Composable
 internal fun PhotoEditorScreen(
     bitmap: Bitmap?,
     editorState: EditorState,
     historyState: EditorHistoryState,
     selectedElementBounds: Rect?,
+    isInteracting: Boolean,
     saveSuccess: String?,
     onSaveSuccessShown: () -> Unit,
     onPickImage: (() -> Unit)?,
@@ -144,36 +142,116 @@ internal fun PhotoEditorScreen(
     val showStylePanel = (toolIsDrawing || selectionIsStyleable) && styleContext != null
     val showShapePanel = editorState.currentTool == EditorTool.Shape
 
-    // Panels, snackbars, and the pill clear the toolbar plus whatever bottom
-    // insets it consumed (gesture bar, keyboard).
-    val bottomInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom)
+    // Everything that isn't the image steps aside while a gesture is in flight,
+    // so a stroke or a dragged element is never hidden behind a sheet.
+    // Alpha rather than visibility on purpose: dropping the bars out of the
+    // layout would resize the canvas mid-gesture, and element offsets are
+    // fractions of that container — every element would shift with it.
+    val chromeAlpha = animateFloatAsState(
+        targetValue = if (isInteracting) 0f else 1f,
+        label = "chromeAlpha",
+    )
+    // Read inside the layer block so the fade is a draw-phase change only.
+    val chromeFade = Modifier.graphicsLayer { alpha = chromeAlpha.value }
 
     Box(modifier = modifier.fillMaxSize()) {
-        // The canvas is deliberately full-bleed — edge-to-edge behind the
-        // bars; only the interactive chrome pads for insets.
-        if (bitmap == null) {
-            EmptyState(onPickImage = onPickImage)
-        } else {
-            canvasContent()
-        }
-
-        if (showShapePanel) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .pointerInput(Unit) {
-                        detectTapGestures { onToolSelected(EditorTool.None) }
-                    }
+        Column(modifier = Modifier.fillMaxSize()) {
+            // The bars take layout space instead of covering the canvas, so the
+            // band between them is exactly the reachable editing area: nothing
+            // can be drawn or parked behind the chrome, and the measured
+            // container the exporter reads back matches what you see.
+            EditorTopBar(
+                historyState = historyState,
+                onConfirm = onSaveImage,
+                onUndo = onUndo,
+                onRedo = onRedo,
+                onAddImage = onPickImage,
+                onClose = onClose,
+                // Nothing to confirm without an image.
+                showConfirm = bitmap != null,
+                modifier = chromeFade,
             )
-        }
 
-        if (showEmojiPicker) {
             Box(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .pointerInput(Unit) {
-                        detectTapGestures { showEmojiPicker = false }
-                    }
+                    .weight(1f)
+                    .fillMaxWidth()
+            ) {
+                if (bitmap == null) {
+                    EmptyState(onPickImage = onPickImage)
+                } else {
+                    canvasContent()
+                }
+
+                ToolSheets(
+                    showStylePanel = showStylePanel,
+                    styleContext = styleContext,
+                    // Selected elements deselect by tapping the canvas and act
+                    // through the selection pill — no close header for them.
+                    styleHasHeader = !selectionIsStyleable,
+                    showShapePanel = showShapePanel,
+                    shapeTool = editorState.shapeTool,
+                    showEmojiPicker = showEmojiPicker,
+                    onToolSelected = onToolSelected,
+                    onUpdateShapeTool = onUpdateShapeTool,
+                    onAddShape = onAddShape,
+                    onAddEmoji = onAddEmoji,
+                    onEmojiPickerDismissed = { showEmojiPicker = false },
+                    emojis = emojis,
+                    swatchColors = swatchColors,
+                    modifier = chromeFade,
+                )
+
+                // Contextual actions anchored to the selected element. Fills the
+                // same box as the canvas so the reported bounds line up 1:1, and
+                // draws after the sheets so it stays legible over them.
+                if (bitmap != null && selected != null && selectedElementBounds != null) {
+                    SelectionActionsOverlay(
+                        bounds = selectedElementBounds,
+                        onDuplicate = onDuplicateSelected,
+                        onDelete = onDeleteSelected,
+                        onEdit = (selected as? EditElement.Text)?.let { text ->
+                            { editingText = text }
+                        },
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .then(chromeFade),
+                    )
+                }
+
+                SnackbarHost(
+                    hostState = snackbarHostState,
+                    modifier = Modifier.align(Alignment.BottomCenter)
+                )
+
+                editorState.error?.let { errorMessage ->
+                    Snackbar(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(16.dp)
+                    ) { Text(errorMessage) }
+                }
+            }
+
+            EditorToolbar(
+                currentTool = editorState.currentTool,
+                // Only one tool sheet is ever open: switching tools closes the
+                // emoji picker, and opening the emoji picker resets the tool
+                // (which closes the shape/style panels and clears any selection).
+                onToolSelected = { tool ->
+                    showEmojiPicker = false
+                    if (tool == EditorTool.Text) showTextDialog = true
+                    onToolSelected(tool)
+                },
+                onEmojiClick = {
+                    onToolSelected(EditorTool.None)
+                    showEmojiPicker = true
+                },
+                onShapeClick = {
+                    showEmojiPicker = false
+                    onToolSelected(EditorTool.Shape)
+                },
+                modifier = chromeFade,
             )
         }
 
@@ -186,148 +264,6 @@ internal fun PhotoEditorScreen(
             ) {
                 CircularProgressIndicator(color = Color.White)
             }
-        }
-
-        AnimatedVisibility(
-            visible = showStylePanel,
-            enter = slideInVertically { it } + fadeIn(),
-            exit = slideOutVertically { it } + fadeOut(),
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .windowInsetsPadding(bottomInsets)
-                .padding(bottom = ToolbarHeight)
-        ) {
-            styleContext?.let { ctx ->
-                EditorStylePanel(
-                    context = ctx,
-                    // Selected elements deselect by tapping the canvas and act
-                    // through the selection pill — no header for them.
-                    onClose = if (selectionIsStyleable) null else {
-                        { onToolSelected(EditorTool.None) }
-                    },
-                    swatchColors = swatchColors,
-                )
-            }
-        }
-
-        AnimatedVisibility(
-            visible = showShapePanel,
-            enter = slideInVertically { it } + fadeIn(),
-            exit = slideOutVertically { it } + fadeOut(),
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .windowInsetsPadding(bottomInsets)
-                .padding(bottom = ToolbarHeight)
-        ) {
-            ShapeToolPanel(
-                state = editorState.shapeTool,
-                onShapeSelected = { onUpdateShapeTool(it, null, null, null) },
-                onColorSelected = { onUpdateShapeTool(null, it, null, null) },
-                onStrokeWidthChanged = { onUpdateShapeTool(null, null, it, null) },
-                onFilledChanged = { onUpdateShapeTool(null, null, null, it) },
-                onDone = {
-                    // Reset the tool BEFORE adding: selectTool clears the
-                    // selection, and onAddShape selects the new shape so it
-                    // comes up ready to move/style.
-                    onToolSelected(EditorTool.None)
-                    onAddShape()
-                },
-                onDismiss = { onToolSelected(EditorTool.None) },
-                // Swallow taps that land on the panel's empty areas so they
-                // don't fall through to the dismiss scrim behind it.
-                modifier = Modifier.pointerInput(Unit) { detectTapGestures {} },
-                swatchColors = swatchColors,
-            )
-        }
-
-        AnimatedVisibility(
-            visible = showEmojiPicker,
-            enter = slideInVertically { it } + fadeIn(),
-            exit = slideOutVertically { it } + fadeOut(),
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .windowInsetsPadding(bottomInsets)
-                .padding(bottom = ToolbarHeight)
-        ) {
-            EmojiToolPanel(
-                onEmojiSelected = { emoji ->
-                    onAddEmoji(emoji)
-                    showEmojiPicker = false
-                },
-                onDismiss = { showEmojiPicker = false },
-                // Swallow taps on the panel's empty areas so they don't fall
-                // through to the dismiss scrim behind it.
-                modifier = Modifier.pointerInput(Unit) { detectTapGestures {} },
-                emojis = emojis,
-            )
-        }
-
-        EditorToolbar(
-            currentTool = editorState.currentTool,
-            // Only one tool sheet is ever open: switching tools closes the
-            // emoji picker, and opening the emoji picker resets the tool
-            // (which closes the shape/style panels and clears any selection).
-            onToolSelected = { tool ->
-                showEmojiPicker = false
-                if (tool == EditorTool.Text) showTextDialog = true
-                onToolSelected(tool)
-            },
-            onEmojiClick = {
-                onToolSelected(EditorTool.None)
-                showEmojiPicker = true
-            },
-            onShapeClick = {
-                showEmojiPicker = false
-                onToolSelected(EditorTool.Shape)
-            },
-            modifier = Modifier.align(Alignment.BottomCenter)
-        )
-
-        // Contextual actions anchored to the selected element. Fills the same
-        // box as the canvas so the reported bounds line up 1:1.
-        if (bitmap != null && selected != null && selectedElementBounds != null) {
-            SelectionActionsOverlay(
-                bounds = selectedElementBounds,
-                onDuplicate = onDuplicateSelected,
-                onDelete = onDeleteSelected,
-                onEdit = (selected as? EditElement.Text)?.let { text ->
-                    { editingText = text }
-                },
-                chromeTop = EditorTopBarHeight,
-                chromeBottom = ToolbarHeight,
-                modifier = Modifier.fillMaxSize(),
-            )
-        }
-
-        // Drawn after the scrims so it stays tappable while panels are open.
-        EditorTopBar(
-            historyState = historyState,
-            onConfirm = onSaveImage,
-            onUndo = onUndo,
-            onRedo = onRedo,
-            onAddImage = onPickImage,
-            onClose = onClose,
-            // Nothing to confirm without an image.
-            showConfirm = bitmap != null,
-            modifier = Modifier.align(Alignment.TopCenter),
-        )
-
-        SnackbarHost(
-            hostState = snackbarHostState,
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .windowInsetsPadding(bottomInsets)
-                .padding(bottom = ToolbarHeight)
-        )
-
-        editorState.error?.let { errorMessage ->
-            Snackbar(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .windowInsetsPadding(bottomInsets)
-                    .padding(bottom = ToolbarHeight)
-                    .padding(16.dp)
-            ) { Text(errorMessage) }
         }
     }
 
@@ -358,6 +294,103 @@ internal fun PhotoEditorScreen(
         )
     }
 }
+
+/**
+ * The three bottom tool sheets, stacked at the bottom of the canvas band. Only
+ * one is ever visible at a time (see the `EditorToolbar` callbacks), and none
+ * of them takes a dismiss scrim: the canvas stays live underneath so you can
+ * keep drawing and dragging while a sheet is open. They close through their own
+ * header button, Shape's Done, picking an emoji, or switching toolbar tabs.
+ *
+ * [modifier] is applied to each sheet, on top of the bottom alignment.
+ */
+@Composable
+private fun BoxScope.ToolSheets(
+    showStylePanel: Boolean,
+    styleContext: StyleContext?,
+    styleHasHeader: Boolean,
+    showShapePanel: Boolean,
+    shapeTool: ShapeToolState,
+    showEmojiPicker: Boolean,
+    onToolSelected: (EditorTool) -> Unit,
+    onUpdateShapeTool: (EditorShape?, Color?, Float?, Boolean?) -> Unit,
+    onAddShape: () -> Unit,
+    onAddEmoji: (String) -> Unit,
+    onEmojiPickerDismissed: () -> Unit,
+    emojis: List<String>,
+    swatchColors: List<Color>,
+    modifier: Modifier = Modifier,
+) {
+    val sheetModifier = Modifier.align(Alignment.BottomCenter).then(modifier)
+
+    AnimatedVisibility(
+        visible = showStylePanel,
+        enter = slideInVertically { it } + fadeIn(),
+        exit = slideOutVertically { it } + fadeOut(),
+        modifier = sheetModifier,
+    ) {
+        styleContext?.let { ctx ->
+            EditorStylePanel(
+                context = ctx,
+                onClose = if (styleHasHeader) {
+                    { onToolSelected(EditorTool.None) }
+                } else null,
+                modifier = Modifier.swallowTaps(),
+                swatchColors = swatchColors,
+            )
+        }
+    }
+
+    AnimatedVisibility(
+        visible = showShapePanel,
+        enter = slideInVertically { it } + fadeIn(),
+        exit = slideOutVertically { it } + fadeOut(),
+        modifier = sheetModifier,
+    ) {
+        ShapeToolPanel(
+            state = shapeTool,
+            onShapeSelected = { onUpdateShapeTool(it, null, null, null) },
+            onColorSelected = { onUpdateShapeTool(null, it, null, null) },
+            onStrokeWidthChanged = { onUpdateShapeTool(null, null, it, null) },
+            onFilledChanged = { onUpdateShapeTool(null, null, null, it) },
+            onDone = {
+                // Reset the tool BEFORE adding: selectTool clears the selection,
+                // and onAddShape selects the new shape so it comes up ready to
+                // move/style.
+                onToolSelected(EditorTool.None)
+                onAddShape()
+            },
+            onDismiss = { onToolSelected(EditorTool.None) },
+            modifier = Modifier.swallowTaps(),
+            swatchColors = swatchColors,
+        )
+    }
+
+    AnimatedVisibility(
+        visible = showEmojiPicker,
+        enter = slideInVertically { it } + fadeIn(),
+        exit = slideOutVertically { it } + fadeOut(),
+        modifier = sheetModifier,
+    ) {
+        EmojiToolPanel(
+            onEmojiSelected = { emoji ->
+                onAddEmoji(emoji)
+                onEmojiPickerDismissed()
+            },
+            onDismiss = onEmojiPickerDismissed,
+            modifier = Modifier.swallowTaps(),
+            emojis = emojis,
+        )
+    }
+}
+
+/**
+ * Consume taps landing on a sheet's empty areas. The sheets have no dismiss
+ * scrim any more — the live canvas sits directly underneath — so an unhandled
+ * tap would fall through and deselect the very element the sheet is styling.
+ */
+private fun Modifier.swallowTaps(): Modifier =
+    pointerInput(Unit) { detectTapGestures {} }
 
 private fun EditorState.toStyleContext(
     onUpdateTextDefault: (Color?, TextUnit?) -> Unit,

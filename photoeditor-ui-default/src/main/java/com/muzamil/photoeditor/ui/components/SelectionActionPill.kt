@@ -25,7 +25,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.muzamil.photoeditor.ui.icons.EditorIcons
@@ -38,14 +37,15 @@ import kotlin.math.roundToInt
 /**
  * Places the [SelectionActionPill] anchored to the selected element's
  * on-canvas [bounds]: horizontally centered just above the box, flipping to
- * just below it when the box is too close to the top chrome. The pill is
- * clamped inside the safe-drawing insets and the editor chrome
- * ([chromeTop]/[chromeBottom] — the heights of the top bar and bottom
- * toolbar), so it never renders off-screen or under a system bar.
+ * just below it when the box is too close to the top edge, and clamped inside
+ * the canvas so it never renders off-screen.
  *
  * Fill the same box the canvas fills so [bounds] (canvas-container pixels)
- * and placement coordinates agree. Placement math is in absolute coordinates,
- * so anchoring is correct in RTL; the pill's own content mirrors naturally.
+ * and placement coordinates agree. That box already sits between the top bar
+ * and the bottom toolbar, both of which consume their own vertical window
+ * insets — so only the horizontal insets (display cutouts in landscape) are
+ * still this layout's problem. Placement math is in absolute coordinates, so
+ * anchoring is correct in RTL; the pill's own content mirrors naturally.
  */
 @Composable
 internal fun SelectionActionsOverlay(
@@ -54,8 +54,6 @@ internal fun SelectionActionsOverlay(
     onDelete: () -> Unit,
     modifier: Modifier = Modifier,
     onEdit: (() -> Unit)? = null,
-    chromeTop: Dp = 0.dp,
-    chromeBottom: Dp = 0.dp,
 ) {
     val insets = WindowInsets.safeDrawing
     Layout(
@@ -71,9 +69,8 @@ internal fun SelectionActionsOverlay(
         val pill = measurables.first().measure(constraints.copy(minWidth = 0, minHeight = 0))
         layout(constraints.maxWidth, constraints.maxHeight) {
             val gap = AnchorGap.roundToPx()
-            val minY = insets.getTop(this@Layout) + chromeTop.roundToPx() + gap
-            val maxY = constraints.maxHeight - insets.getBottom(this@Layout) -
-                    chromeBottom.roundToPx() - gap - pill.height
+            val minY = gap
+            val maxY = constraints.maxHeight - gap - pill.height
             val above = (bounds.top - gap - pill.height).roundToInt()
             val y = (if (above >= minY) above else (bounds.bottom + gap).roundToInt())
                 .coerceIn(minY, maxOf(minY, maxY))

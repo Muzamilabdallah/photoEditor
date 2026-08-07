@@ -57,6 +57,7 @@ internal fun EditorCanvas(
     onContainerSizeChanged: (IntSize) -> Unit,
     selectionColor: Color,
     onSelectedBoundsChanged: (Rect) -> Unit,
+    onInteractionChanged: (Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val density = LocalDensity.current
@@ -130,6 +131,7 @@ internal fun EditorCanvas(
                         if (currentTool == EditorTool.Drawing) {
                             detectDragGestures(
                                 onDragStart = { offset ->
+                                    onInteractionChanged(true)
                                     onStartDrawing(screenToRatio(offset))
                                 },
                                 onDrag = { change, _ ->
@@ -142,8 +144,14 @@ internal fun EditorCanvas(
                                     }
                                     onContinueDrawing(points)
                                 },
-                                onDragEnd = { onFinishDrawing() },
-                                onDragCancel = { onFinishDrawing() }
+                                onDragEnd = {
+                                    onFinishDrawing()
+                                    onInteractionChanged(false)
+                                },
+                                onDragCancel = {
+                                    onFinishDrawing()
+                                    onInteractionChanged(false)
+                                }
                             )
                         } else {
                             // Taps on elements are consumed by DraggableElement above;
@@ -196,6 +204,7 @@ internal fun EditorCanvas(
                                     if (currentTool != EditorTool.Drawing) onElementTap(element.id)
                                 },
                                 onSelectedBoundsChanged = onSelectedBoundsChanged,
+                                onInteractionChanged = onInteractionChanged,
                             ) { selected -> TextElementContent(element, selected) }
 
                             is EditElement.Emoji -> DraggableElement(
@@ -211,6 +220,7 @@ internal fun EditorCanvas(
                                     if (currentTool != EditorTool.Drawing) onElementTap(element.id)
                                 },
                                 onSelectedBoundsChanged = onSelectedBoundsChanged,
+                                onInteractionChanged = onInteractionChanged,
                             ) { selected -> EmojiElementContent(element, selected) }
 
                             is EditElement.Shape -> DraggableElement(
@@ -226,6 +236,7 @@ internal fun EditorCanvas(
                                     if (currentTool != EditorTool.Drawing) onElementTap(element.id)
                                 },
                                 onSelectedBoundsChanged = onSelectedBoundsChanged,
+                                onInteractionChanged = onInteractionChanged,
                             ) { selected ->
                                 ShapeElementContent(
                                     element = element,

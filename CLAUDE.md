@@ -37,7 +37,7 @@ README.md documents consumer-facing install/wiring for both modes; THEMING.md do
 
 Mode A consumers skip all of that and use core's public `PhotoEditorCanvas` (`canvas/PhotoEditorCanvas.kt`) — the editing surface alone, auto-wired to the state holder.
 
-State is owned by `PhotoEditorState` (core, `state/PhotoEditorState.kt`), a plain Compose state holder created via `rememberPhotoEditorState()` — deliberately **not** an AAC ViewModel. It exposes `editorState`/`canUndo`/`canRedo`/`saveSuccess` as snapshot state; all mutations go through its methods. Retention across rotation/process death via custom `Saver` (`state/PhotoEditorStateSaver.kt`) — bitmap intentionally excluded (too large); persisting the image *uri* and re-decoding on restore is the consumer's job. Undo history is not retained.
+State is owned by `PhotoEditorState` (core, `state/PhotoEditorState.kt`), a plain Compose state holder created via `rememberPhotoEditorState()` — deliberately **not** an AAC ViewModel. It exposes `editorState`/`canUndo`/`canRedo`/`saveSuccess`/`selectedElementBounds`/`isInteracting` as snapshot state; all mutations go through its methods. `isInteracting` is true for as long as a canvas gesture is in flight (freehand stroke, or element drag/rotate/scale) — the canvas reports it, and UIs fade their chrome out while it's set so nothing covers the stroke. Retention across rotation/process death via custom `Saver` (`state/PhotoEditorStateSaver.kt`) — bitmap intentionally excluded (too large); persisting the image *uri* and re-decoding on restore is the consumer's job. Undo history is not retained.
 
 ### Shape tool state
 
@@ -79,7 +79,7 @@ This invariant lets the same coordinates render correctly at any Compose canvas 
 ### `:photoeditor-ui-default` layout (`src/main/java/com/muzamil/photoeditor/ui/`)
 
 - `PhotoEditor.kt` — public entry: theme + host; optional `colors`/`typography` token overrides, `onClose` (null hides the close button), `emojis`, `swatchColors`.
-- `PhotoEditorScreen.kt` — Scaffold, panel orchestration, empty state; takes `canvasContent` slot. `internal`.
+- `PhotoEditorScreen.kt` — the layout (a plain `Column`, no Material `Scaffold`), panel orchestration, empty state; takes `canvasContent` slot. `internal`. **The bars take layout space rather than overlaying the canvas**: top bar → `weight(1f)` canvas band → bottom toolbar, so the band is exactly the reachable editing area and nothing can be drawn or parked behind the chrome. Keep that inset **constant** — element offsets are fractions of the measured container (see `ImageExporter`'s header comment), so a container that resized when a sheet opened would shift every element. That's also why the chrome fades via `graphicsLayer { alpha }` while `isInteracting`, never via `AnimatedVisibility`. Tool sheets (`ToolSheets`) float over the bottom of the band with no dismiss scrim — the canvas stays live underneath, and they close via their own header, Shape's Done, picking an emoji, or switching tabs.
 - `EditorHost.kt` — `EditorHostContent` adapter (internal): state holder → screen params + canvas slot.
 - `shapetool/ShapeToolPanel.kt` — **public** stateless Shape panel (header, 4-column shape grid, color swatches, stroke slider + live px pill, fill toggle) + `@Preview`s (light/dark/selection states). Binds to core's `ShapeToolState` via callbacks only.
 - `emojitool/EmojiToolPanel.kt` — **public** stateless Emoji panel: grid of tappable strings, `emojis: List<String> = PhotoEditorDefaults.emojis` (any string works — text-sticker shortcut; core is list-agnostic).
