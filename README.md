@@ -42,12 +42,12 @@ implementation("com.github.Muzamilabdallah.photoEditor:photoeditor-ui-default:0.
 ### Try the demo app
 
 ```bash
-git clone <this-repo-url>
+git clone https://github.com/Muzamilabdallah/photoEditor.git
 cd photoEditor
 ./gradlew :app:installDebug
 ```
 
-Launch "Photo Editor" from the app drawer and choose a sample: **Default UI** (Mode B) or **Custom UI** (Mode A, a hand-rolled toolbar over core alone).
+Launch "Photo Editor" from the app drawer and pick one of three samples: **Default UI** (Mode B, as shipped), **Customized default UI** (Mode B with a custom emoji list, a pastel swatch palette, and colors bridged from the app's `MaterialTheme`), or **Custom UI** (Mode A, a hand-rolled toolbar over core alone).
 
 ## Mode B — the built-in editor
 
@@ -92,6 +92,8 @@ PhotoEditor(
 
 `decodeEditableBitmap` (in `com.muzamil.photoeditor.image`, part of core) produces the software, size-capped bitmap the editor requires — always use it (or equivalent) when loading from a uri; hardware bitmaps crash the exporter.
 
+`PhotoEditor` lays out its own top bar and bottom tool nav and consumes the matching window insets, so give it the whole window rather than nesting it in another `Scaffold`'s content slot. The editing surface is the band between those two bars — nothing can be drawn or dragged behind them — and the tool sheets float over the bottom of it without blocking the canvas, fading out of the way while a gesture is in flight.
+
 Edits survive rotation and process death: `PhotoEditorState` ships a custom `Saver`. The bitmap itself is too large for saved state — persist the uri (as above, via `rememberSaveable`) and re-decode on restore.
 
 ## Mode A — bring your own UI
@@ -122,9 +124,16 @@ Column {
 
 The tool state types your UI binds to (`ShapeToolState`, `EditorShape`, `EditorColors`) live in core — the built-in `ShapeToolPanel` uses exactly the same ones. `EditorShapePaths` (also core) builds each shape as a `Path` so custom pickers can render matching icons.
 
+**Give the canvas its own space.** Gestures clamp to `PhotoEditorCanvas`'s measured bounds, and the exporter reconstructs element positions from that same size — so the canvas area *is* the editable area. Lay your chrome out beside it (as with `weight(1f)` above) rather than overlaying it in a `Box`: an element dragged under an opaque toolbar drawn on top of the canvas is still inside the canvas, just invisible and impossible to grab again.
+
+Two snapshot properties on `PhotoEditorState` are worth binding your chrome to:
+
+- **`selectedElementBounds`** — the selected element's live on-canvas bounds (null when nothing is selected). Anchor a contextual toolbar to it; it tracks the element through drags and transforms.
+- **`isInteracting`** — true for as long as a canvas gesture is in flight (a freehand stroke, or an element drag/rotate/scale). Fade your controls out while it is set so they never cover what the user is drawing. The built-in UI does exactly this.
+
 Load images with `state.loadImage(bitmap)`; decode uris with `decodeEditableBitmap` first (on a background dispatcher).
 
-See `app/src/main/java/com/muzamil/photoeditor/` for both working samples: `DefaultUiSample.kt` (Mode B) and `CustomUiSample.kt` (Mode A).
+See `app/src/main/java/com/muzamil/photoeditor/` for all three working samples: `DefaultUiSample.kt` and `CustomizedUiSample.kt` (Mode B) and `CustomUiSample.kt` (Mode A).
 
 ## Theming
 
