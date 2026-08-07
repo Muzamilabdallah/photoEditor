@@ -9,6 +9,12 @@ WhatsApp-style photo editor for Android, built with Jetpack Compose and publishe
 
 Users overlay text, emoji, freehand drawings, and shapes (rect / circle / line / triangle / star / heart / arrow) on an image and export the composite via MediaStore or to a file.
 
+| Draw | Selection | Shape | Result |
+|:----:|:---------:|:-----:|:------:|
+| <img src="screenshots/editor-draw.jpg" width="200" alt="Draw tool with color swatches and stroke slider"> | <img src="screenshots/editor-selection.jpg" width="200" alt="Selected emoji with duplicate and delete actions"> | <img src="screenshots/editor-shape.jpg" width="200" alt="Shape tool with color, stroke and fill controls"> | <img src="screenshots/editor-result.jpg" width="200" alt="Finished edit with text, emoji, shape and freehand drawing"> |
+
+*The built-in UI (Mode B), as shipped by `photoeditor-ui-default`.*
+
 ## Installation
 
 Add the JitPack repository to your `settings.gradle.kts`:
