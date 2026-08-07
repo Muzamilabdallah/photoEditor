@@ -11,7 +11,7 @@ plugins {
 group = "com.github.Muzamilabdallah"
 // 0.x: the public API is still moving — breaking changes land in minor bumps
 // until it settles enough to promise stability with 1.0.0.
-version = "0.1.0"
+version = "0.1.1"
 
 android {
     // Distinct from `:app` and `:photoeditor-ui-default` namespaces so AGP

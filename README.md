@@ -9,6 +9,10 @@ WhatsApp-style photo editor for Android, built with Jetpack Compose and publishe
 
 Users overlay text, emoji, freehand drawings, and shapes (rect / circle / line / triangle / star / heart / arrow) on an image and export the composite via MediaStore or to a file.
 
+<p align="center">
+  <img src="screenshots/demo.gif" width="260" alt="Picking the heart shape, placing it, and toggling fill">
+</p>
+
 | Draw | Selection | Shape | Result |
 |:----:|:---------:|:-----:|:------:|
 | <img src="screenshots/editor-draw.jpg" width="200" alt="Draw tool with color swatches and stroke slider"> | <img src="screenshots/editor-selection.jpg" width="200" alt="Selected emoji with duplicate and delete actions"> | <img src="screenshots/editor-shape.jpg" width="200" alt="Shape tool with color, stroke and fill controls"> | <img src="screenshots/editor-result.jpg" width="200" alt="Finished edit with text, emoji, shape and freehand drawing"> |
@@ -29,15 +33,15 @@ dependencyResolutionManagement {
 }
 ```
 
-Then pick one of two modes. The current release is **`0.1.0`** (see [jitpack.io/#Muzamilabdallah/photoEditor](https://jitpack.io/#Muzamilabdallah/photoEditor) for newer tags):
+Then pick one of two modes. The current release is **`0.1.1`** (see [jitpack.io/#Muzamilabdallah/photoEditor](https://jitpack.io/#Muzamilabdallah/photoEditor) for newer tags):
 
 ```kotlin
 // Mode A — canvas only, you build your own toolbar UI
-implementation("com.github.Muzamilabdallah.photoEditor:photoeditor-core:0.1.0")
+implementation("com.github.Muzamilabdallah.photoEditor:photoeditor-core:0.1.1")
 
 // Mode B — canvas + built-in panels (Shape, Text, Draw, Emoji)
-implementation("com.github.Muzamilabdallah.photoEditor:photoeditor-core:0.1.0")
-implementation("com.github.Muzamilabdallah.photoEditor:photoeditor-ui-default:0.1.0")
+implementation("com.github.Muzamilabdallah.photoEditor:photoeditor-core:0.1.1")
+implementation("com.github.Muzamilabdallah.photoEditor:photoeditor-ui-default:0.1.1")
 ```
 
 > **Pre-1.0.** The public API is still settling, so breaking changes can land in
