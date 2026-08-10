@@ -9,13 +9,7 @@ WhatsApp-style photo editor for Android, built with Jetpack Compose and publishe
 
 Users overlay text, emoji, freehand drawings, and shapes (rect / circle / line / triangle / star / heart / arrow) on an image and export the composite via MediaStore or to a file.
 
-<p align="center">
-  <a href="https://github.com/Muzamilabdallah/photoEditor/blob/master/screenshots/demo.mp4">
-    <img src="screenshots/demo-poster.jpg" width="260" alt="Demo video: adding text, an emoji, a filled heart shape and freehand drawing to a photo">
-  </a>
-  <br>
-  <em>▶ Watch the 1:13 demo</em>
-</p>
+ 
 
 | Draw | Selection | Shape | Result |
 |:----:|:---------:|:-----:|:------:|
