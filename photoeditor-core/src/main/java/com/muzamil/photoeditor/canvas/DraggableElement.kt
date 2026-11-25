@@ -30,6 +30,11 @@ internal fun DraggableElement(
     onSelectedBoundsChanged: (Rect) -> Unit,
     onInteractionChanged: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
+    /**
+     * False while the Draw tool is active: the element takes no pointer input
+     * at all, so a stroke can start on top of it instead of dragging it.
+     */
+    interactive: Boolean = true,
     content: @Composable (isSelected: Boolean) -> Unit
 ) {
     var childWidth by remember(element.id) { mutableIntStateOf(0) }
@@ -123,10 +128,19 @@ internal fun DraggableElement(
                 scaleX = element.scale
                 scaleY = element.scale
             }
-            .transformable(transformableState)
-            .pointerInput(element.id) {
-                detectTapGestures { onTap() }
-            }
+            .then(
+                if (interactive) {
+                    Modifier
+                        .transformable(transformableState)
+                        .pointerInput(element.id) {
+                            detectTapGestures { onTap() }
+                        }
+                } else {
+                    // No pointer input → touches fall through to the canvas's
+                    // gesture layer underneath.
+                    Modifier
+                }
+            )
             .drawWithContent {
                 drawContent()
                 if (isSelected) {
