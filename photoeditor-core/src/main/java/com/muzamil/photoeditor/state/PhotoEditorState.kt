@@ -2,7 +2,8 @@ package com.muzamil.photoeditor.state
 
 import android.content.Context
 import android.graphics.Bitmap
-import android.util.Log
+import android.net.Uri
+import android.os.Build
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.derivedStateOf
@@ -23,10 +24,19 @@ import com.muzamil.photoeditor.domain.EditorState
 import com.muzamil.photoeditor.domain.EditorTool
 import com.muzamil.photoeditor.domain.nextZIndex
 import com.muzamil.photoeditor.export.SaveDestination
+import com.muzamil.photoeditor.export.ExportFormat
+import com.muzamil.photoeditor.export.renderEdits
 import com.muzamil.photoeditor.export.saveEditedImage
+import com.muzamil.photoeditor.export.writeEditedImage
+import com.muzamil.photoeditor.domain.EditorError
+import com.muzamil.photoeditor.domain.EditorException
 import com.muzamil.photoeditor.history.HistoryManager
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.OutputStream
+import kotlin.coroutines.cancellation.CancellationException
 import java.util.UUID
 
 /**
@@ -122,8 +132,36 @@ class PhotoEditorState internal constructor(
 
     // ── Image ─────────────────────────────────────────────────────────────────
 
-    fun loadImage(bitmap: Bitmap) {
-        update { it.copy(backgroundBitmap = bitmap) }
+    /**
+     * Shows [bitmap] in the editor.
+     *
+     * [keepEdits] decides what happens to the current elements, selection and
+     * undo history. By default they are **kept when no image is loaded yet**
+     * — the process-death restore case, where the elements come back from
+     * saved state and you re-decode the same image — and **cleared when an
+     * image is being replaced**, so a new photo never inherits the old one's
+     * overlays. Pass it explicitly to override (e.g. `true` to keep overlays
+     * on a re-filtered version of the same photo).
+     *
+     * Hardware bitmaps are copied to software ARGB_8888 first, so any decoded
+     * bitmap works; [com.muzamil.photoeditor.image.decodeEditableBitmap] is
+     * still the recommended way to decode (it also caps the size).
+     */
+    fun loadImage(
+        bitmap: Bitmap,
+        keepEdits: Boolean = editorState.backgroundBitmap == null,
+    ) {
+        val editable = bitmap.toSoftwareBitmap()
+        if (keepEdits) {
+            update { it.copy(backgroundBitmap = editable) }
+        } else {
+            selectedElementBounds = null
+            update {
+                it.copy(backgroundBitmap = editable, elements = emptyList(), selectedElementId = null)
+            }
+            historyManager.initialize(emptyList())
+            updateHistoryFlags()
+        }
     }
 
     internal fun setInteracting(interacting: Boolean) {
@@ -498,44 +536,78 @@ class PhotoEditorState internal constructor(
 
     // ── Save ──────────────────────────────────────────────────────────────────
 
+    /**
+     * Renders the edit at the image's full resolution and returns a new
+     * bitmap (the caller owns it; recycle when done). Uses the elements as
+     * they are when called. Fails with [EditorError.NoImage] if no image is
+     * loaded.
+     */
+    suspend fun renderBitmap(): Result<Bitmap> {
+        val (bitmap, elements) = snapshotForExport() ?: return noImage()
+        return exportResult { withContext(Dispatchers.Default) { renderEdits(bitmap, elements) } }
+    }
+
+    /**
+     * Renders the edit and saves it to [destination] in [format]. Returns the
+     * saved image's uri (`content://` for gallery saves on API 29+, `file://`
+     * otherwise), or a failure carrying an [EditorException]. Cancelling the
+     * calling coroutine cancels the export. Does not touch [EditorState.isLoading]
+     * or [EditorState.error] — it's for your own coroutine and UI.
+     */
+    suspend fun export(
+        context: Context,
+        destination: SaveDestination = SaveDestination.Gallery(),
+        format: ExportFormat = ExportFormat.Jpeg(),
+    ): Result<Uri> {
+        val (bitmap, elements) = snapshotForExport() ?: return noImage()
+        return exportResult { context.saveEditedImage(bitmap, elements, destination, format) }
+    }
+
+    /**
+     * Renders the edit and encodes it into [stream] in [format] — e.g. to
+     * upload the bytes without writing a file. The stream is not closed.
+     */
+    suspend fun exportTo(
+        stream: OutputStream,
+        format: ExportFormat = ExportFormat.Jpeg(),
+    ): Result<Unit> {
+        val (bitmap, elements) = snapshotForExport() ?: return noImage()
+        return exportResult { writeEditedImage(bitmap, elements, stream, format) }
+    }
+
+    /**
+     * Fire-and-forget save for simple UIs: runs [export] in the editor's
+     * scope, sets [EditorState.isLoading] while it runs, then publishes the
+     * location on [saveSuccess] or the reason on [EditorState.error]. Use
+     * [export] instead when you need the result in your own coroutine or
+     * want the save to outlive the editor screen.
+     */
     fun saveEditedImage(
         context: Context,
-        quality: Int = 95,
-        format: Bitmap.CompressFormat = Bitmap.CompressFormat.JPEG,
         destination: SaveDestination = SaveDestination.Gallery(),
+        format: ExportFormat = ExportFormat.Jpeg(),
     ) {
-        val bitmap = editorState.backgroundBitmap
-
-        if (bitmap == null) {
-            update { it.copy(error = "No image to save") }
+        if (editorState.backgroundBitmap == null) {
+            update { it.copy(error = EditorError.NoImage) }
             return
         }
-
         scope.launch {
             update { it.copy(isLoading = true, error = null) }
-
-            context.saveEditedImage(
-                backgroundBitmap = bitmap,
-                elements = editorState.elements,
-                quality = quality,
-                format = format,
-                destination = destination,
-            ).fold(
-                onSuccess = { path ->
+            export(context, destination, format).fold(
+                onSuccess = { uri ->
                     update { it.copy(isLoading = false) }
-                    saveSuccess = path
+                    saveSuccess = if (uri.scheme == "file") uri.path else uri.toString()
                 },
                 onFailure = { err ->
-                    Log.e("PhotoEditorState", "saveEditedImage failed", err)
-                    update {
-                        it.copy(
-                            isLoading = false,
-                            error = err.message ?: "Failed to save image",
-                        )
-                    }
+                    update { it.copy(isLoading = false, error = err.toEditorError()) }
                 },
             )
         }
+    }
+
+    /** Clears [EditorState.error], e.g. once your UI has shown it. */
+    fun clearError() {
+        update { it.copy(error = null) }
     }
 
     fun clearSaveSuccess() {
@@ -543,6 +615,12 @@ class PhotoEditorState internal constructor(
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────
+
+    /** The image and elements as they are now, so later edits can't race the export. */
+    private fun snapshotForExport(): Pair<Bitmap, List<EditElement>>? =
+        editorState.backgroundBitmap?.let { it to editorState.elements }
+
+    private fun <T> noImage(): Result<T> = Result.failure(EditorException(EditorError.NoImage))
 
     private fun addElement(element: EditElement) {
         commitIfChanged()
@@ -572,6 +650,31 @@ class PhotoEditorState internal constructor(
     }
 
     private companion object {
+        /**
+         * Runs [block], turning failures into an [EditorException] result.
+         * Cancellation is rethrown, never swallowed, so a cancelled caller
+         * stops instead of seeing a "failed" result.
+         */
+        suspend fun <T> exportResult(block: suspend () -> T): Result<T> = try {
+            Result.success(block())
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: OutOfMemoryError) {
+            Result.failure(EditorException(EditorError.OutOfMemory))
+        } catch (e: Exception) {
+            Result.failure(EditorException(EditorError.ExportFailed(e)))
+        }
+
+        fun Throwable.toEditorError(): EditorError =
+            (this as? EditorException)?.error ?: EditorError.ExportFailed(this)
+
+        fun Bitmap.toSoftwareBitmap(): Bitmap =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && config == Bitmap.Config.HARDWARE) {
+                copy(Bitmap.Config.ARGB_8888, false)
+            } else {
+                this
+            }
+
         /** How far a duplicate is offset from its source, as a fraction of the image. */
         const val DUPLICATE_NUDGE_RATIO = 0.03f
     }

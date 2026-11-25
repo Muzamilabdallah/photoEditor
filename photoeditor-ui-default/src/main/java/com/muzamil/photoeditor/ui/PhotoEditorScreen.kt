@@ -47,6 +47,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.muzamil.photoeditor.domain.EditElement
+import com.muzamil.photoeditor.domain.EditorError
 import com.muzamil.photoeditor.domain.EditorHistoryState
 import com.muzamil.photoeditor.domain.EditorShape
 import com.muzamil.photoeditor.domain.EditorState
@@ -228,12 +229,12 @@ internal fun PhotoEditorScreen(
                     modifier = Modifier.align(Alignment.BottomCenter)
                 )
 
-                editorState.error?.let { errorMessage ->
+                editorState.error?.let { error ->
                     Snackbar(
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
                             .padding(16.dp)
-                    ) { Text(errorMessage) }
+                    ) { Text(error.message()) }
                 }
             }
 
@@ -530,4 +531,11 @@ private fun EmptyStateDarkPreview() {
     PhotoEditorTheme(colors = darkPhotoEditorColors()) {
         EmptyState(onPickImage = {})
     }
+}
+
+/** User-facing text for an [EditorError]. Core reports types; wording lives here. */
+private fun EditorError.message(): String = when (this) {
+    EditorError.NoImage -> "No image to save"
+    EditorError.OutOfMemory -> "Not enough memory to save this image"
+    is EditorError.ExportFailed -> "Couldn't save the image"
 }

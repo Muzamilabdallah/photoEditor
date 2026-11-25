@@ -1,5 +1,6 @@
 package com.muzamil.photoeditor.export
 
+import android.annotation.SuppressLint
 import android.content.ContentValues
 import android.content.Context
 import android.graphics.Bitmap
@@ -9,7 +10,9 @@ import android.graphics.Path
 import android.graphics.Typeface
 import android.text.Layout
 import android.text.StaticLayout
+import android.text.TextDirectionHeuristics
 import android.text.TextPaint
+import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
@@ -19,6 +22,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.core.graphics.withSave
 import com.muzamil.photoeditor.domain.EditElement
 import com.muzamil.photoeditor.domain.EditorShape
+import com.muzamil.photoeditor.domain.TextWrapWidthRatio
 import com.muzamil.photoeditor.domain.inRenderOrder
 import com.muzamil.photoeditor.domain.sizeUnit
 import kotlinx.coroutines.Dispatchers
@@ -26,6 +30,8 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
+import java.io.OutputStream
+import kotlin.coroutines.cancellation.CancellationException
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.min
@@ -58,23 +64,15 @@ fun renderEdits(source: Bitmap, elements: List<EditElement>): Bitmap {
 
             // ── Text ─────────────────────────────────────────────────────────
             is EditElement.Text -> {
-                val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                    color     = element.color.toArgb()
-                    textSize  = element.fontSizeRatio * unit
-                    typeface  = if (element.fontWeight == FontWeight.Bold)
-                        Typeface.DEFAULT_BOLD else Typeface.DEFAULT
-                    textAlign = Paint.Align.CENTER
+                val paint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color    = element.color.toArgb()
+                    textSize = element.fontSizeRatio * unit
+                    typeface = typefaceFor(element.fontWeight)
                 }
-                val fm = paint.fontMetrics
-                // Shift baseline so glyphs are vertically centred on (0,0).
-                val baselineY = -(fm.ascent + fm.descent) / 2f
-
-                canvas.withSave {
-                    translate(element.offsetRatioX.toBitmapX(), element.offsetRatioY.toBitmapY())
-                    rotate(element.rotation)
-                    scale(element.scale, element.scale)
-                    drawText(element.text, 0f, baselineY, paint)
-                }
+                // Same box as the preview's BasicText: wraps at
+                // TextWrapWidthRatio of the image width, lines centred.
+                val layout = textLayout(element.text, paint, maxWidth = (bitmapW * TextWrapWidthRatio).toInt())
+                drawCentred(canvas, element, layout, bitmapW, bitmapH)
             }
 
             // ── Emoji ────────────────────────────────────────────────────────
@@ -82,20 +80,8 @@ fun renderEdits(source: Bitmap, elements: List<EditElement>): Bitmap {
                 val paint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
                     textSize = element.sizeRatio * unit
                 }
-                // Lay the glyph out the way Compose's BasicText does, so its
-                // box (and therefore its centre) matches the preview: no font
-                // padding, and line height taken from the fallback emoji font
-                // rather than the default font's metrics.
-                val layout = emojiLayout(element.emoji, paint)
-
-                canvas.withSave {
-                    translate(element.offsetRatioX.toBitmapX(), element.offsetRatioY.toBitmapY())
-                    rotate(element.rotation)
-                    scale(element.scale, element.scale)
-                    // Centre the laid-out line box on (0,0) in local space.
-                    translate(-layout.width / 2f, -layout.height / 2f)
-                    layout.draw(this)
-                }
+                val layout = textLayout(element.emoji, paint, maxWidth = Int.MAX_VALUE)
+                drawCentred(canvas, element, layout, bitmapW, bitmapH)
             }
 
             // ── Drawing ──────────────────────────────────────────────────────
@@ -149,112 +135,115 @@ fun renderEdits(source: Bitmap, elements: List<EditElement>): Bitmap {
 
 /**
  * Renders [elements] onto [backgroundBitmap] with [renderEdits] and writes the
- * result to [destination].
+ * result to [destination] in [format]. Runs on [Dispatchers.IO]; throws on
+ * failure (including [CancellationException] if the caller is cancelled).
+ * Prefer `PhotoEditorState.export`, which wraps this in a `Result`.
  *
- * @param backgroundBitmap  Original source bitmap (not modified).
- * @param elements          All editor elements.
- * @param quality           Compression quality (0–100).
- * @param format            Output bitmap compress format.
- * @param destination       Where to write the result: [SaveDestination.Gallery]
- *                          (public, default) or [SaveDestination.File] (a path
- *                          the caller controls, e.g. app-private storage).
- * @return the saved image's location: a `content://` uri string for
- *         MediaStore saves, an absolute file path otherwise.
+ * @return the saved image: a `content://` uri for MediaStore saves (API 29+),
+ *         a `file://` uri otherwise.
  */
 suspend fun Context.saveEditedImage(
     backgroundBitmap: Bitmap,
     elements: List<EditElement>,
-    quality: Int = 95,
-    format: Bitmap.CompressFormat = Bitmap.CompressFormat.JPEG,
     destination: SaveDestination = SaveDestination.Gallery(),
-): Result<String> = withContext(Dispatchers.IO) {
-    runCatching {
-        val resultBitmap = renderEdits(backgroundBitmap, elements)
-        try {
-            writeBitmap(resultBitmap, quality, format, destination)
-        } finally {
-            resultBitmap.recycle()
-        }
+    format: ExportFormat = ExportFormat.Jpeg(),
+): Uri = withContext(Dispatchers.IO) {
+    val resultBitmap = renderEdits(backgroundBitmap, elements)
+    try {
+        writeBitmap(resultBitmap, format, destination)
+    } finally {
+        resultBitmap.recycle()
     }
+}
+
+/**
+ * Renders [elements] onto [backgroundBitmap] and encodes it into [stream] in
+ * [format] — e.g. to upload the bytes without writing a file. The stream is
+ * not closed. Runs on [Dispatchers.Default]; throws on failure.
+ */
+suspend fun writeEditedImage(
+    backgroundBitmap: Bitmap,
+    elements: List<EditElement>,
+    stream: OutputStream,
+    format: ExportFormat = ExportFormat.Jpeg(),
+) = withContext(Dispatchers.Default) {
+    val resultBitmap = renderEdits(backgroundBitmap, elements)
+    try {
+        if (!format.compress(resultBitmap, stream)) throw IOException("Encoding as $format failed")
+    } finally {
+        resultBitmap.recycle()
+    }
+}
+
+private fun OutputStream.encode(bitmap: Bitmap, format: ExportFormat) = use {
+    if (!format.compress(bitmap, it)) throw IOException("Encoding as $format failed")
 }
 
 private fun Context.writeBitmap(
     resultBitmap: Bitmap,
-    quality: Int,
-    format: Bitmap.CompressFormat,
+    format: ExportFormat,
     destination: SaveDestination,
-): String {
-    // ── Save to storage ──────────────────────────────────────────────────
-    val (extension, mimeType) = when (format) {
-        Bitmap.CompressFormat.PNG -> "png" to "image/png"
-        Bitmap.CompressFormat.JPEG -> "jpg" to "image/jpeg"
-        else -> "webp" to "image/webp"
+): Uri = when (destination) {
+    is SaveDestination.File -> {
+        val file = destination.file
+        file.parentFile?.let { parent ->
+            if (!parent.exists() && !parent.mkdirs()) {
+                throw IOException("Cannot create directory $parent")
+            }
+        }
+        FileOutputStream(file).encode(resultBitmap, format)
+        Uri.fromFile(file)
     }
 
-    val filePath = when (destination) {
-        is SaveDestination.File -> {
-            val file = destination.file
-            file.parentFile?.let { parent ->
-                if (!parent.exists() && !parent.mkdirs()) {
-                    throw IOException("Cannot create directory $parent")
-                }
+    is SaveDestination.Gallery -> {
+        val fileName = "edited_image_${System.currentTimeMillis()}.${format.extension}"
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val relativePath = destination.subFolder
+                ?.let { "${Environment.DIRECTORY_PICTURES}/$it" }
+                ?: Environment.DIRECTORY_PICTURES
+            val contentValues = ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                put(MediaStore.MediaColumns.MIME_TYPE, format.mimeType)
+                put(MediaStore.MediaColumns.RELATIVE_PATH, relativePath)
+                put(MediaStore.MediaColumns.IS_PENDING, 1)
             }
-            FileOutputStream(file).use { resultBitmap.compress(format, quality, it) }
-            file.absolutePath
-        }
+            val uri = contentResolver.insert(
+                MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                contentValues,
+            ) ?: throw IOException("MediaStore insert failed — cannot create image entry")
 
-        is SaveDestination.Gallery -> {
-            val fileName = "edited_image_${System.currentTimeMillis()}.$extension"
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                val relativePath = destination.subFolder
-                    ?.let { "${Environment.DIRECTORY_PICTURES}/$it" }
-                    ?: Environment.DIRECTORY_PICTURES
-                val contentValues = ContentValues().apply {
-                    put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
-                    put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
-                    put(MediaStore.MediaColumns.RELATIVE_PATH, relativePath)
-                    put(MediaStore.MediaColumns.IS_PENDING, 1)
-                }
-                val uri = contentResolver.insert(
-                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                    contentValues,
-                ) ?: throw IOException("MediaStore insert failed — cannot create image entry")
-
-                try {
-                    val stream = contentResolver.openOutputStream(uri)
-                        ?: throw IOException("Cannot open output stream for $uri")
-                    stream.use { resultBitmap.compress(format, quality, it) }
-                    // Make the entry visible to other apps only once fully written.
-                    contentResolver.update(
-                        uri,
-                        ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) },
-                        null,
-                        null,
-                    )
-                } catch (e: Exception) {
-                    // Don't leave an orphaned pending entry behind.
-                    contentResolver.delete(uri, null, null)
-                    throw e
-                }
-                uri.toString()
-            } else {
-                // Direct write to the public directory — needs
-                // WRITE_EXTERNAL_STORAGE held at runtime on API <29.
-                val base = Environment.getExternalStoragePublicDirectory(
-                    Environment.DIRECTORY_PICTURES
+            try {
+                val stream = contentResolver.openOutputStream(uri)
+                    ?: throw IOException("Cannot open output stream for $uri")
+                stream.encode(resultBitmap, format)
+                // Make the entry visible to other apps only once fully written.
+                contentResolver.update(
+                    uri,
+                    ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) },
+                    null,
+                    null,
                 )
-                val dir = destination.subFolder?.let { File(base, it) } ?: base
-                if (!dir.exists() && !dir.mkdirs()) {
-                    throw IOException("Cannot create directory $dir")
-                }
-                val file = File(dir, fileName)
-                FileOutputStream(file).use { resultBitmap.compress(format, quality, it) }
-                file.absolutePath
+            } catch (e: Throwable) {
+                // Don't leave an orphaned pending entry behind (also on cancellation).
+                contentResolver.delete(uri, null, null)
+                throw e
             }
+            uri
+        } else {
+            // Direct write to the public directory — needs
+            // WRITE_EXTERNAL_STORAGE held at runtime on API <29.
+            val base = Environment.getExternalStoragePublicDirectory(
+                Environment.DIRECTORY_PICTURES
+            )
+            val dir = destination.subFolder?.let { File(base, it) } ?: base
+            if (!dir.exists() && !dir.mkdirs()) {
+                throw IOException("Cannot create directory $dir")
+            }
+            val file = File(dir, fileName)
+            FileOutputStream(file).encode(resultBitmap, format)
+            Uri.fromFile(file)
         }
     }
-
-    return filePath
 }
 
 // ── Shape path helpers ────────────────────────────────────────────────────────
@@ -303,19 +292,52 @@ private fun heartPath(halfW: Float, halfH: Float) = Path().apply {
 }
 
 /**
- * A single-line layout of [text], sized to its own width, with the same line
- * metrics Compose's `BasicText` uses: no font padding, and (API 28+) line
- * height from fallback fonts. Emoji come from a fallback font whose ascent and
- * descent differ from the default font's, so centring on `Paint.fontMetrics`
- * would put the glyph lower than the preview does.
+ * Lays [text] out with the same settings the preview's `BasicText` uses (see
+ * `TextElementContent`), so the box — and therefore its centre, its line
+ * breaks and its height — matches what was on screen:
+ * - width: the widest line, capped at [maxWidth] (wrapping beyond it);
+ * - lines centred, simple line breaking, no hyphenation;
+ * - no font padding, and (API 28+) line height from fallback fonts, which
+ *   is where emoji and many non-Latin scripts come from;
+ * - direction from the first strong character, so Arabic/Hebrew lay out RTL.
  */
-private fun emojiLayout(text: String, paint: TextPaint): StaticLayout {
-    val width = kotlin.math.ceil(Layout.getDesiredWidth(text, paint)).toInt().coerceAtLeast(1)
+// Layout.BREAK_STRATEGY_SIMPLE equals LineBreaker.BREAK_STRATEGY_SIMPLE (0);
+// LineBreaker only exists from API 29 and minSdk is 24, hence the suppression.
+@SuppressLint("WrongConstant")
+internal fun textLayout(text: CharSequence, paint: TextPaint, maxWidth: Int): StaticLayout {
+    val desired = kotlin.math.ceil(Layout.getDesiredWidth(text, paint)).toInt()
+    val width = desired.coerceIn(1, maxWidth.coerceAtLeast(1))
     return StaticLayout.Builder.obtain(text, 0, text.length, paint, width)
-        .setAlignment(Layout.Alignment.ALIGN_NORMAL)
+        .setAlignment(Layout.Alignment.ALIGN_CENTER)
         .setIncludePad(false)
+        .setBreakStrategy(Layout.BREAK_STRATEGY_SIMPLE)
+        .setHyphenationFrequency(Layout.HYPHENATION_FREQUENCY_NONE)
+        .setTextDirection(TextDirectionHeuristics.FIRSTSTRONG_LTR)
         .apply {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) setUseLineSpacingFromFallbacks(true)
         }
         .build()
 }
+
+/** Draws [layout] centred on [element]'s position, with its rotation and scale. */
+private fun drawCentred(
+    canvas: Canvas,
+    element: EditElement,
+    layout: StaticLayout,
+    bitmapW: Float,
+    bitmapH: Float,
+) = canvas.withSave {
+    translate(element.offsetRatioX * bitmapW, element.offsetRatioY * bitmapH)
+    rotate(element.rotation)
+    scale(element.scale, element.scale)
+    translate(-layout.width / 2f, -layout.height / 2f)
+    layout.draw(this)
+}
+
+/** The system sans-serif at [weight]; exact weights on API 28+, bold/regular before. */
+private fun typefaceFor(weight: FontWeight): Typeface =
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+        Typeface.create(Typeface.DEFAULT, weight.weight, false)
+    } else {
+        if (weight.weight >= FontWeight.SemiBold.weight) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
+    }

@@ -51,8 +51,8 @@ import com.muzamil.photoeditor.ui.theme.lightPhotoEditorColors
  *
  * Parameters:
  * - [bitmap] — supply an image directly; it is (re)loaded whenever the value
- *   changes. Must be a software bitmap — decode uris with
- *   [com.muzamil.photoeditor.image.decodeEditableBitmap].
+ *   changes. Decode uris with
+ *   [com.muzamil.photoeditor.image.decodeEditableBitmap], which caps the size.
  * - [state] — hoist the state holder via [rememberPhotoEditorState] to
  *   observe editor state or drive it programmatically.
  * - [onPickImage] — invoked by the pick-image button; when null, the pick

@@ -16,16 +16,16 @@ import kotlin.math.max
 private const val MAX_DECODE_DIMENSION = 4096
 
 /**
- * Decodes [uri] into a software, editable bitmap, downsampling anything larger
- * than 4096px on its largest edge. Software allocation is required: the
- * exporter copies the bitmap's pixels, which hardware bitmaps don't allow.
- * Returns null if the uri can't be decoded.
+ * Decodes [uri] into a software bitmap, downsampling anything larger than
+ * 4096px on its largest edge (protects against out-of-memory on huge camera
+ * originals). Returns null if the uri can't be decoded; out-of-memory errors
+ * are not caught.
  *
- * Use this to prepare images for
+ * Recommended way to prepare images for
  * [com.muzamil.photoeditor.state.PhotoEditorState.loadImage] from your own
- * picking flow — bitmaps decoded any other way may be hardware-backed and
- * crash the exporter. Performs blocking IO; call from a background
- * dispatcher.
+ * picking flow. Other decoders work too — hardware bitmaps are copied to
+ * software on load — but won't be size-capped. Performs blocking IO; call
+ * from a background dispatcher.
  */
 fun decodeEditableBitmap(contentResolver: ContentResolver, uri: Uri): Bitmap? = try {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {

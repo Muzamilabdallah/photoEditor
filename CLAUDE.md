@@ -20,7 +20,8 @@ All commands use the Gradle wrapper at the repo root. (If `java` isn't on PATH, 
 
 - Build everything: `./gradlew :photoeditor-core:assembleDebug :photoeditor-ui-default:assembleDebug :app:assembleDebug`
 - Install demo on device/emulator: `./gradlew :app:installDebug`
-- Unit tests (JVM): `./gradlew :photoeditor-core:testDebugUnitTest` (the real test suite; ui-default and app have none of substance)
+- Unit tests (JVM): `./gradlew :photoeditor-core:testDebugUnitTest` (the real test suite; ui-default and app have none of substance). Exporter tests (`export/RenderEditsTest`, `state/PhotoEditorExportTest`) use Robolectric `@GraphicsMode(NATIVE)` — real Skia pixels on the JVM.
+- Device tests: `./gradlew :photoeditor-core:connectedDebugAndroidTest` (hardware-bitmap export; needs a device)
 - Run a single unit test class: `./gradlew :photoeditor-core:testDebugUnitTest --tests "com.muzamil.photoeditor.geometry.ImageGeometryTest"` (append `.methodName` for one test)
 - Lint: `./gradlew :photoeditor-core:lintDebug :photoeditor-ui-default:lintDebug :app:lintDebug`
 - Clean: `./gradlew clean`
@@ -58,7 +59,7 @@ Never store anything in sp, dp, container pixels or bitmap pixels. The built-in 
 
 1. **On-screen preview** — core `canvas/EditorCanvas.kt` does all gesture handling. The image is shown whole (Fit, letterboxed); `geometry/ImageGeometry` computes its on-screen rect, and the image, the drawing gesture layer and every element are laid out in one box of exactly that rect — so inside it a bitmap ratio is just a fraction of the box, and screen sizes are `ratio × ImageGeometry.sizeUnitPx`. Text/emoji render at exact pixel sizes with `fontScale` pinned to 1 (`TextElementContent.kt`). Elements clamp to the image; `selectedElementBounds` is translated back to container pixels. Every element — drawings included — is painted in one loop in `inRenderOrder()` (`domain/RenderOrder.kt`, sorted by `zIndex`), the same order the exporter uses; each `Drawing` is its own non-interactive full-size `Canvas` layer, and a separate transparent gesture layer underneath handles freehand input and empty-canvas taps. New elements get `nextZIndex()` (max + 1), never `elements.size`. `DraggableElement` does rotation-compensated pan math. `Shape` renders via `ShapeElementContent.kt`, which draws paths from the public `EditorShapePaths` (also used by ui-default's shape chips and available to custom UIs).
 
-2. **Export** — public pure `renderEdits(bitmap, elements)` in core `export/ImageExporter.kt` re-draws all elements onto an ARGB copy with `android.graphics.Canvas` (`ratio × bitmap size`, sizes `× shorter side`; no screen input at all), in `inRenderOrder()`. `Context.saveEditedImage` calls it, then writes via MediaStore (API 29+) or legacy public dir (<29). Its shape path builders mirror `EditorShapePaths` geometries around the origin.
+2. **Export** — public pure `renderEdits(bitmap, elements)` in core `export/ImageExporter.kt` re-draws all elements onto an ARGB copy with `android.graphics.Canvas` (`ratio × bitmap size`, sizes `× shorter side`; no screen input at all), in `inRenderOrder()`. Text and emoji go through `textLayout()` (StaticLayout: centred lines, wrap at `TextWrapWidthRatio` of the image width, simple breaks, no hyphens, no font padding, fallback line spacing) — `TextElementContent` sets the **same** options on `BasicText`; change both together. `PhotoEditorState.export`/`exportTo`/`renderBitmap` wrap it in a `Result` (cancellation rethrown, failures as `EditorException(EditorError)`); `Context.saveEditedImage` renders, then writes via MediaStore (API 29+) or legacy public dir (<29). Its shape path builders mirror `EditorShapePaths` geometries around the origin.
 
 **When adding or modifying an element type or its transform, update both rendering paths**, plus `PhotoEditorState.updateElementTransform` and the element's branch in `state/PhotoEditorStateSaver.kt`. When adding an `EditorShape` entry: `EditorShapePaths` (preview + chips) and `ImageExporter` (export) both need it; the panel grid picks it up automatically.
 
@@ -70,7 +71,7 @@ Never store anything in sp, dp, container pixels or bitmap pixels. The built-in 
 
 - `domain/` — `EditElement.kt` (sealed elements + `EditorShape` + `EditorState` + `EditorTool`), `ShapeToolState.kt`, `EditorColors.kt`. Pure data.
 - `canvas/` — `PhotoEditorCanvas.kt` (public surface), `EditorCanvas.kt`, `DraggableElement.kt`, `TextElementContent.kt` (uses `BasicText`, NOT material3), `ShapeElementContent.kt` (internal), `EditorShapePaths.kt` (public path builder).
-- `image/BitmapDecoding.kt` — public `decodeEditableBitmap`: software allocation (hardware bitmaps crash the exporter's pixel copy), ≤4096px downsampling.
+- `image/BitmapDecoding.kt` — public `decodeEditableBitmap`: ≤4096px downsampling, software allocation. Hardware bitmaps do **not** break export (`Bitmap.copy` converts them; verified by `src/androidTest/.../HardwareBitmapExportTest`), and `loadImage` copies them to software anyway.
 - `export/` — `ImageExporter.kt`, `DrawingPathBuilder.kt` (bezier smoothing shared by preview + export), `SaveDestination.kt` (public sealed: `Gallery(subFolder)` / `File(file)`).
 - `geometry/ImageGeometry.kt` — Fit image rect, screen↔ratio mapping and on-screen size unit (internal, unit-tested).
 - `history/HistoryManager.kt` — undo/redo deque (internal).
