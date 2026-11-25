@@ -62,10 +62,10 @@ sealed class EditElement {
 
     /**
      * A predefined shape (see [EditorShape]). Position is the shape's
-     * center, expressed as ratios. [widthRatio] and [heightRatio] are the
-     * shape's bounding-box size as fractions of the source bitmap's
-     * dimensions, so the same shape renders consistently in the preview and
-     * the exported bitmap.
+     * center, expressed as ratios of the preview container (like [Text]).
+     * [widthRatio] and [heightRatio] are the shape's bounding-box size as
+     * fractions of the preview **container** (not the bitmap); the exporter
+     * maps them through the visible crop region of the bitmap.
      */
     data class Shape(
         override val id: String = UUID.randomUUID().toString(),
@@ -99,14 +99,7 @@ data class EditorState(
     /** The Shape tool's pending style: what the next added shape looks like. */
     val shapeTool: ShapeToolState = ShapeToolState(),
     val isLoading: Boolean = false,
-    val error: String? = null,
-    /**
-     * previewDisplayWidthPx / bitmap.width — how much the bitmap is scaled down (or up)
-     * to fit the preview canvas. Kept in state so [Context.saveEditedImage] can scale
-     * text/emoji sizes that are stored in device-pixels up to bitmap-pixels. 1f until
-     * the first preview layout pass reports it.
-     */
-    val previewScaleFactor: Float = 1f
+    val error: String? = null
 )
 
 sealed class EditorTool {
