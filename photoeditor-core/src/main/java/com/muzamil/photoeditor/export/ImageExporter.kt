@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.IntSize
 import androidx.core.graphics.withSave
 import com.muzamil.photoeditor.domain.EditElement
 import com.muzamil.photoeditor.domain.EditorShape
+import com.muzamil.photoeditor.domain.inRenderOrder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -100,7 +101,7 @@ suspend fun Context.saveEditedImage(
         }
 
         // ── Render elements ──────────────────────────────────────────────────
-        elements.sortedBy { it.zIndex }.forEach { element ->
+        elements.inRenderOrder().forEach { element ->
             when (element) {
 
                 // ── Text ─────────────────────────────────────────────────────

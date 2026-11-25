@@ -24,6 +24,7 @@ import com.muzamil.photoeditor.domain.EditorHistoryState
 import com.muzamil.photoeditor.domain.EditorShape
 import com.muzamil.photoeditor.domain.EditorState
 import com.muzamil.photoeditor.domain.EditorTool
+import com.muzamil.photoeditor.domain.nextZIndex
 import com.muzamil.photoeditor.export.SaveDestination
 import com.muzamil.photoeditor.export.saveEditedImage
 import com.muzamil.photoeditor.history.HistoryManager
@@ -159,7 +160,7 @@ class PhotoEditorState internal constructor(
             color = editorState.textColor,
             fontSize = 28.sp,
             fontWeight = FontWeight.Bold,
-            zIndex = editorState.elements.size,
+            zIndex = editorState.elements.nextZIndex(),
         )
         addElement(element)
         return element.id
@@ -207,7 +208,7 @@ class PhotoEditorState internal constructor(
             offsetRatioX = 0.5f,
             offsetRatioY = 0.5f,
             size = 48.sp,
-            zIndex = editorState.elements.size,
+            zIndex = editorState.elements.nextZIndex(),
         )
         addElement(element)
         return element.id
@@ -235,7 +236,7 @@ class PhotoEditorState internal constructor(
             color = s.shapeTool.selectedColor,
             strokeWidth = s.shapeTool.strokeWidthPx,
             filled = s.shapeTool.isFilled,
-            zIndex = s.elements.size,
+            zIndex = s.elements.nextZIndex(),
         )
         addElement(element)
         return element.id
@@ -287,7 +288,7 @@ class PhotoEditorState internal constructor(
                     points = listOf(startPoint),
                     color = s.drawingColor,
                     strokeWidth = s.drawingStrokeWidth,
-                    zIndex = s.elements.size,
+                    zIndex = s.elements.nextZIndex(),
                 )
             )
         }
@@ -410,7 +411,7 @@ class PhotoEditorState internal constructor(
         val newId = UUID.randomUUID().toString()
         val newX = (original.offsetRatioX + DUPLICATE_NUDGE_RATIO).coerceAtMost(0.95f)
         val newY = (original.offsetRatioY + DUPLICATE_NUDGE_RATIO).coerceAtMost(0.95f)
-        val zIndex = editorState.elements.size
+        val zIndex = editorState.elements.nextZIndex()
         val copy = when (original) {
             is EditElement.Text -> original.copy(
                 id = newId, offsetRatioX = newX, offsetRatioY = newY, zIndex = zIndex,

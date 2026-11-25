@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.IntSize
 import com.muzamil.photoeditor.domain.EditElement
 import com.muzamil.photoeditor.domain.EditorState
 import com.muzamil.photoeditor.domain.EditorTool
+import com.muzamil.photoeditor.domain.inRenderOrder
 import com.muzamil.photoeditor.export.buildSmoothDrawingPath
 import com.muzamil.photoeditor.geometry.CropGeometry
 
@@ -111,7 +112,9 @@ internal fun EditorCanvas(
                 )
             }
 
-            Canvas(
+            // Gesture layer: freehand input and empty-canvas taps. Draws
+            // nothing itself; strokes are painted in the z-ordered loop that follows.
+            Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .pointerInput(currentTool) {
@@ -147,35 +150,17 @@ internal fun EditorCanvas(
                                 onCanvasTap(screenToRatio(offset))
                             }
                         }
-                    }) {
-                if (!cropGeometry.isValid) return@Canvas
+                    })
 
-                elements.elements.forEach { element ->
-                    if (element is EditElement.Drawing && element.points.isNotEmpty()) {
-                        // Same smoothing helper as the exporter; CropGeometry maps
-                        // normalized → screen coords (crop scale + offsets).
-                        val path = buildSmoothDrawingPath(
-                            element.points,
-                            cropGeometry::ratioToScreen,
-                        )
-                        drawPath(
-                            path = path.asComposePath(),
-                            color = element.color,
-                            style = Stroke(
-                                width = element.strokeWidth * cropGeometry.scale,
-                                cap = StrokeCap.Round,
-                                join = StrokeJoin.Round
-                            )
-                        )
-                    }
-                }
-            }
-
-            // Draggable text/emoji layer.
+            // All elements in one bottom-to-top pass, in the same order the
+            // exporter paints them, so a stroke drawn over a text is over it on
+            // screen too. Drawings are non-interactive full-size layers (no
+            // pointer input), so touches pass through them to the gesture
+            // layer above or the elements below.
             if (containerSize.width > 0 && containerSize.height > 0) {
                 val parentWidth = containerSize.width
                 val parentHeight = containerSize.height
-                elements.elements.forEach { element ->
+                elements.elements.inRenderOrder().forEach { element ->
                     key(element.id) {
                         when (element) {
                             is EditElement.Text -> DraggableElement(
@@ -234,11 +219,31 @@ internal fun EditorCanvas(
                                 )
                             }
 
-                            is EditElement.Drawing -> Unit // rendered in Canvas above
+                            is EditElement.Drawing -> DrawingLayer(element, cropGeometry)
                         }
                     }
                 }
             }
         }
+    }
+}
+
+/** One freehand stroke, painted at its own z-position among the overlays. */
+@Composable
+private fun DrawingLayer(element: EditElement.Drawing, geometry: CropGeometry) {
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        if (!geometry.isValid || element.points.isEmpty()) return@Canvas
+        // Same smoothing helper as the exporter; CropGeometry maps
+        // normalized → screen coords (crop scale + offsets).
+        val path = buildSmoothDrawingPath(element.points, geometry::ratioToScreen)
+        drawPath(
+            path = path.asComposePath(),
+            color = element.color,
+            style = Stroke(
+                width = element.strokeWidth * geometry.scale,
+                cap = StrokeCap.Round,
+                join = StrokeJoin.Round,
+            ),
+        )
     }
 }
