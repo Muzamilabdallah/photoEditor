@@ -1,6 +1,6 @@
 # Theming the default UI
 
-Everything `photoeditor-ui-default` draws — panels, chips, swatches, sliders, the bottom nav — reads its colors, text styles, and corner shapes from three token sets provided by `PhotoEditorTheme`:
+Everything `photoforge-ui` draws — panels, chips, swatches, sliders, the bottom nav — reads its colors, text styles, and corner shapes from three token sets provided by `PhotoEditorTheme`:
 
 - `PhotoEditorColors` — `surface`, `surfaceVariant`, `onSurface`, `onSurfaceVariant`, `accent`, `onAccent`, `accentContainer`, `onAccentContainer`, `outline`
 - `PhotoEditorTypography` — `screenTitle`, `panelTitle`, `sectionLabel`, `body`, `bodySecondary`, `chipLabel`, `valueLabel`, `button`
@@ -72,12 +72,12 @@ The theme also derives an internal Material 3 color scheme from the same tokens 
 
 ## Replace a panel entirely, keep the canvas
 
-The built-in panels are just stateless composables over core types. If the Shape panel (or all of the chrome) doesn't fit your design, drop to `photoeditor-core` and reuse the canvas — it handles every editing gesture on its own:
+The built-in panels are just stateless composables over core types. If the Shape panel (or all of the chrome) doesn't fit your design, drop to `photoforge-core` and reuse the canvas — it handles every editing gesture on its own:
 
 ```kotlin
-import com.muzamil.photoeditor.canvas.PhotoEditorCanvas
-import com.muzamil.photoeditor.domain.EditorShape
-import com.muzamil.photoeditor.domain.ShapeToolState
+import io.github.photoforge.canvas.PhotoEditorCanvas
+import io.github.photoforge.domain.EditorShape
+import io.github.photoforge.domain.ShapeToolState
 
 val state = rememberPhotoEditorState()
 val shapeTool: ShapeToolState = state.editorState.shapeTool

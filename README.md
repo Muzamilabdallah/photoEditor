@@ -1,11 +1,11 @@
-# photoEditor
+# PhotoForge
 
-[![Release](https://jitpack.io/v/Muzamilabdallah/photoEditor.svg)](https://jitpack.io/#Muzamilabdallah/photoEditor)
+[![Maven Central](https://img.shields.io/maven-central/v/io.github.photoforge/photoforge-core)](https://central.sonatype.com/namespace/io.github.photoforge)
 
 WhatsApp-style photo editor for Android, built with Jetpack Compose and published as **two independently installable artifacts**:
 
-- **`photoeditor-core`** — the UI-agnostic engine: the editing canvas composable, element model, gestures, undo/redo, state holder, and export. Zero Material dependency, no opinion about how panels look.
-- **`photoeditor-ui-default`** — the optional batteries-included UI: tool panels (Shape, Text, Draw, Emoji), bottom tool nav, top bar, and a token-based `PhotoEditorTheme`. Depends on core.
+- **`photoforge-core`** — the UI-agnostic engine: the editing canvas composable, element model, gestures, undo/redo, state holder, and export. Zero Material dependency, no opinion about how panels look.
+- **`photoforge-ui`** — the optional batteries-included UI: tool panels (Shape, Text, Draw, Emoji), bottom tool nav, top bar, and a token-based `PhotoEditorTheme`. Depends on core.
 
 Users overlay text, emoji, freehand drawings, and shapes (rect / circle / line / triangle / star / heart / arrow) on an image and export the composite via MediaStore or to a file.
 
@@ -17,37 +17,30 @@ Users overlay text, emoji, freehand drawings, and shapes (rect / circle / line /
 |:----:|:---------:|:-----:|:------:|
 | <img src="screenshots/editor-draw.jpg" width="200" alt="Draw tool with color swatches and stroke slider"> | <img src="screenshots/editor-selection.jpg" width="200" alt="Selected emoji with duplicate and delete actions"> | <img src="screenshots/editor-shape.jpg" width="200" alt="Shape tool with color, stroke and fill controls"> | <img src="screenshots/editor-result.jpg" width="200" alt="Finished edit with text, emoji, shape and freehand drawing"> |
 
-*The built-in UI (Mode B), as shipped by `photoeditor-ui-default`.*
+*The built-in UI (Mode B), as shipped by `photoforge-ui`.*
 
 ## Installation
 
-Add the JitPack repository to your `settings.gradle.kts`:
-
-```kotlin
-dependencyResolutionManagement {
-    repositories {
-        google()
-        mavenCentral()
-        maven("https://jitpack.io")
-    }
-}
-```
-
-Then pick one of two modes. The current release is **`0.1.1`** (see [jitpack.io/#Muzamilabdallah/photoEditor](https://jitpack.io/#Muzamilabdallah/photoEditor) for newer tags):
+PhotoForge is on **Maven Central** — no extra repository needed (`mavenCentral()` is in every Android project by default). Pick one of two modes:
 
 ```kotlin
 // Mode A — canvas only, you build your own toolbar UI
-implementation("com.github.Muzamilabdallah.photoEditor:photoeditor-core:0.1.1")
+implementation("io.github.photoforge:photoforge-core:0.2.0")
 
 // Mode B — canvas + built-in panels (Shape, Text, Draw, Emoji)
-implementation("com.github.Muzamilabdallah.photoEditor:photoeditor-core:0.1.1")
-implementation("com.github.Muzamilabdallah.photoEditor:photoeditor-ui-default:0.1.1")
+implementation("io.github.photoforge:photoforge-ui:0.2.0")
 ```
+
+<details>
+<summary>Upgrading from 0.1.x (JitPack)</summary>
+
+0.1.x was published on JitPack as `com.github.Muzamilabdallah.photoEditor:photoeditor-core` / `photoeditor-ui-default`, with the Kotlin package `io.github.photoforge`. From 0.2.0 the library is **PhotoForge**: switch to the coordinates above, drop `maven("https://jitpack.io")` if nothing else needs it, and replace `io.github.photoforge` with `io.github.photoforge` in your imports. The JitPack coordinates keep working for 0.2.0 only, to give you time to move. 0.2.0 also changes the element model and some APIs — see [CHANGELOG.md](CHANGELOG.md).
+</details>
 
 > **Pre-1.0.** The public API is still settling, so breaking changes can land in
 > any `0.x` minor bump. Pin an exact version rather than a range.
 
-**Which mode?** Pick **Mode B** if you want a working editor in one composable — `PhotoEditor(...)` ships the panels, toolbar, and theming, and you can restyle it with a few `PhotoEditorTheme` tokens (see [THEMING.md](THEMING.md)). Pick **Mode A** when the editor must match your app's own design system exactly: you get `PhotoEditorCanvas` (the full gesture-handling editing surface) plus all state types (`PhotoEditorState`, `EditorShape`, `ShapeToolState`, `EditorColors`), and every pixel of chrome is yours. `ui-default` declares core as an `api` dependency, so in Mode B the single `photoeditor-ui-default` line would suffice — listing both just makes the coupling explicit.
+**Which mode?** Pick **Mode B** if you want a working editor in one composable — `PhotoEditor(...)` ships the panels, toolbar, and theming, and you can restyle it with a few `PhotoEditorTheme` tokens (see [THEMING.md](THEMING.md)). Pick **Mode A** when the editor must match your app's own design system exactly: you get `PhotoEditorCanvas` (the full gesture-handling editing surface) plus all state types (`PhotoEditorState`, `EditorShape`, `ShapeToolState`, `EditorColors`), and every pixel of chrome is yours. `photoforge-ui` declares core as an `api` dependency, so in Mode B that one line brings in core too.
 
 ### Try the demo app
 
@@ -64,7 +57,7 @@ Launch "Photo Editor" from the app drawer and pick one of three samples: **Defau
 The library declares **no permissions**. None are needed on Android 10+ (MediaStore writes are permission-free); only if your app supports API 24–28 *and* uses gallery saves, declare `WRITE_EXTERNAL_STORAGE` with `maxSdkVersion="28"` in your own manifest and request it at runtime (the demo app's manifest shows the entry). The `PhotoEditor` composable owns its state, theme, and UI; **image sourcing is yours** — the library ships no photo picker. Pass a bitmap directly:
 
 ```kotlin
-import com.muzamil.photoeditor.ui.PhotoEditor
+import io.github.photoforge.ui.PhotoEditor
 
 setContent {
     PhotoEditor(bitmap = myBitmap) // must be a software bitmap — see decodeEditableBitmap below
@@ -100,7 +93,7 @@ PhotoEditor(
 )
 ```
 
-`decodeEditableBitmap` (in `com.muzamil.photoeditor.image`, part of core) produces a size-capped bitmap (≤4096px on its longest edge) — use it when loading from a uri so huge camera originals don't run out of memory. Any bitmap works with `loadImage`, hardware ones included (they're copied to software on load). Loading a *different* image clears the current edits and undo history; loading into an empty editor (e.g. after process-death restore) keeps the restored edits. Pass `keepEdits` to override.
+`decodeEditableBitmap` (in `io.github.photoforge.image`, part of core) produces a size-capped bitmap (≤4096px on its longest edge) — use it when loading from a uri so huge camera originals don't run out of memory. Any bitmap works with `loadImage`, hardware ones included (they're copied to software on load). Loading a *different* image clears the current edits and undo history; loading into an empty editor (e.g. after process-death restore) keeps the restored edits. Pass `keepEdits` to override.
 
 `PhotoEditor` lays out its own top bar and bottom tool nav and consumes the matching window insets, so give it the whole window rather than nesting it in another `Scaffold`'s content slot. The editing surface is the band between those two bars — nothing can be drawn or dragged behind them — and the tool sheets float over the bottom of it without blocking the canvas, fading out of the way while a gesture is in flight.
 
@@ -108,12 +101,12 @@ Edits survive rotation and process death: `PhotoEditorState` ships a custom `Sav
 
 ## Mode A — bring your own UI
 
-Skip `photoeditor-ui-default` entirely and use `PhotoEditorCanvas` — the editing surface alone. It renders the image and elements and handles all editing gestures (select, deselect, drag/rotate/scale, freehand drawing); everything else is driven through `PhotoEditorState` from your own controls:
+Skip `photoforge-ui` entirely and use `PhotoEditorCanvas` — the editing surface alone. It renders the image and elements and handles all editing gestures (select, deselect, drag/rotate/scale, freehand drawing); everything else is driven through `PhotoEditorState` from your own controls:
 
 ```kotlin
-import com.muzamil.photoeditor.canvas.PhotoEditorCanvas
-import com.muzamil.photoeditor.domain.EditorShape
-import com.muzamil.photoeditor.domain.EditorTool
+import io.github.photoforge.canvas.PhotoEditorCanvas
+import io.github.photoforge.domain.EditorShape
+import io.github.photoforge.domain.EditorTool
 
 val state = rememberPhotoEditorState()
 val context = LocalContext.current

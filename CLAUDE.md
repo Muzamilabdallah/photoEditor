@@ -4,15 +4,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-WhatsApp-style photo editor delivered as **two published Android libraries** plus a thin demo app. Built with Jetpack Compose. Kotlin 2.0.21, AGP 8.13.0, compileSdk 36, minSdk 24, Java 11 toolchain, Compose BOM 2024.09.00.
+**PhotoForge** — a WhatsApp-style photo editor delivered as **two published Android libraries** plus a thin demo app. Built with Jetpack Compose. Kotlin 2.0.21, AGP 8.13.0, compileSdk 36, minSdk 24, Java 11 toolchain, Compose BOM 2024.09.00.
 
-- `:photoeditor-core` — the UI-agnostic engine: canvas composable, element model, gestures, undo/redo, state holder, export. **No material3 dependency** — keep it that way; Mode A consumers must not inherit Material. Gradle namespace `com.muzamil.photoeditor.core`.
-- `:photoeditor-ui-default` — the optional built-in UI: tool panels, bottom nav, top bar, token-based theme. Depends on core via `api` (consumers get core types transitively). Namespace `com.muzamil.photoeditor.uidefault`. **Dependency direction is one-way (`ui-default → core`), never the reverse.**
+- `:photoeditor-core` — the UI-agnostic engine: canvas composable, element model, gestures, undo/redo, state holder, export. **No material3 dependency** — keep it that way; Mode A consumers must not inherit Material. Published as `io.github.photoforge:photoforge-core`; Android namespace `io.github.photoforge.core`.
+- `:photoeditor-ui-default` — the optional built-in UI: tool panels, bottom nav, top bar, token-based theme. Depends on core via `api` (consumers get core types transitively). Published as `io.github.photoforge:photoforge-ui`; Android namespace `io.github.photoforge.uidefault`. (Module folders keep their old names.) **Dependency direction is one-way (`ui-default → core`), never the reverse.**
 - `:app` — demo consumer with three sample screens: `DefaultUiSample` (Mode B, built-in UI), `CustomizedUiSample` (Mode B with custom emojis/swatches + `colorsFromMaterialTheme()` bridge), and `CustomUiSample` (Mode A, hand-rolled toolbar over core only — keep its imports core-only; it exists to prove the core API is sufficient).
 
-All three share Kotlin package root `com.muzamil.photoeditor.*` (fine — AGP namespaces differ, so R classes don't collide), but `internal` visibility does NOT cross module boundaries: ui-default can only use core's public API.
+The libraries use the Kotlin package root `io.github.photoforge.*`; the demo app keeps its own `com.muzamil.photoeditor` package and application id. AGP namespaces differ, so R classes don't collide, but `internal` visibility does NOT cross module boundaries: ui-default can only use core's public API.
 
-Publishing: both library modules apply `maven-publish` (release variant + sources jar). Project-level `group`/`version` are set in each module's build file so ui-default's generated POM declares core with the right GAV. `jitpack.yml` builds both via `publishToMavenLocal` on JDK 17. Validate locally with `./gradlew :photoeditor-core:publishToMavenLocal :photoeditor-ui-default:publishToMavenLocal` and check `~/.m2/repository/com/github/Muzamilabdallah/`.
+Publishing: both library modules use the `com.vanniktech.maven.publish` plugin (Maven Central via the Central Portal; sources jar + empty javadoc jar). Group and version live in `gradle.properties` (`GROUP`, `VERSION_NAME`) — one version for both artifacts; project-level `group`/`version` are set from them so ui's POM pins core exactly. Signing happens only when a `signingInMemoryKey` property is present, so local/CI/JitPack builds publish unsigned to Maven local. JitPack builds (env `JITPACK=true`) keep the pre-rename coordinates (`com.github.Muzamilabdallah` / `photoeditor-core` / `photoeditor-ui-default`) for the 0.2.0 transition. Releases: push a tag equal to `VERSION_NAME` → `.github/workflows/release.yml` publishes and creates the GitHub Release; one-time setup and steps are in `RELEASING.md`. Validate locally with `./gradlew :photoeditor-core:publishToMavenLocal :photoeditor-ui-default:publishToMavenLocal` and check `~/.m2/repository/io/github/photoforge/`.
 
 ## Common commands
 
@@ -22,7 +22,7 @@ All commands use the Gradle wrapper at the repo root. (If `java` isn't on PATH, 
 - Install demo on device/emulator: `./gradlew :app:installDebug`
 - Unit tests (JVM): `./gradlew :photoeditor-core:testDebugUnitTest` (the real test suite; ui-default and app have none of substance). Exporter tests (`export/RenderEditsTest`, `state/PhotoEditorExportTest`) use Robolectric `@GraphicsMode(NATIVE)` — real Skia pixels on the JVM.
 - Device tests: `./gradlew :photoeditor-core:connectedDebugAndroidTest` (hardware-bitmap export; needs a device)
-- Run a single unit test class: `./gradlew :photoeditor-core:testDebugUnitTest --tests "com.muzamil.photoeditor.geometry.ImageGeometryTest"` (append `.methodName` for one test)
+- Run a single unit test class: `./gradlew :photoeditor-core:testDebugUnitTest --tests "io.github.photoforge.geometry.ImageGeometryTest"` (append `.methodName` for one test)
 - Lint: `./gradlew :photoeditor-core:lintDebug :photoeditor-ui-default:lintDebug :app:lintDebug`
 - Clean: `./gradlew clean`
 
@@ -67,7 +67,7 @@ Never store anything in sp, dp, container pixels or bitmap pixels. The built-in 
 
 `history/HistoryManager` (core): snapshots of `List<EditElement>` in two deques, bounded at 50. Per-frame transforms and slider moves do **not** push history; `commitIfChanged()` pushes once, only when elements differ from `HistoryManager.current`. It runs at gesture end (`setInteracting(false)`), on discrete edits (swatch tap, fill toggle, text content), on selection change, before every new action, and at the start of `undo`/`redo` — so un-committed edits are never lost. Continuous controls should call the public `commitPendingChanges()` from `onValueChangeFinished`. History does not track background bitmap or style defaults.
 
-### `:photoeditor-core` layout (`src/main/java/com/muzamil/photoeditor/`)
+### `:photoeditor-core` layout (`src/main/java/io/github/photoforge/`)
 
 - `domain/` — `EditElement.kt` (sealed elements + `EditorShape` + `EditorState` + `EditorTool`), `ShapeToolState.kt`, `EditorColors.kt`. Pure data.
 - `canvas/` — `PhotoEditorCanvas.kt` (public surface), `EditorCanvas.kt`, `DraggableElement.kt`, `TextElementContent.kt` (uses `BasicText`, NOT material3), `ShapeElementContent.kt` (internal), `EditorShapePaths.kt` (public path builder).
@@ -78,7 +78,7 @@ Never store anything in sp, dp, container pixels or bitmap pixels. The built-in 
 - `state/` — `PhotoEditorState.kt` (public holder + `rememberPhotoEditorState()`), `PhotoEditorStateSaver.kt` (internal).
 - Tests live here: `src/test/.../{geometry,history,state}/`.
 
-### `:photoeditor-ui-default` layout (`src/main/java/com/muzamil/photoeditor/ui/`)
+### `:photoeditor-ui-default` layout (`src/main/java/io/github/photoforge/ui/`)
 
 - `PhotoEditor.kt` — public entry: theme + host; optional `colors`/`typography` token overrides, `onClose` (null hides the close button), `emojis`, `swatchColors`.
 - `PhotoEditorScreen.kt` — the layout (a plain `Column`, no Material `Scaffold`), panel orchestration, empty state; takes `canvasContent` slot. `internal`. **The bars take layout space rather than overlaying the canvas**: top bar → `weight(1f)` canvas band → bottom toolbar, so the band is exactly the reachable editing area and nothing can be drawn or parked behind the chrome. Keep that inset constant anyway: elements are stored in bitmap space so nothing would drift, but a band that resized when a sheet opened would rescale the photo under the user's finger. The chrome fades via `graphicsLayer { alpha }` while `isInteracting`, never via `AnimatedVisibility`, for the same reason. Tool sheets (`ToolSheets`) float over the bottom of the band with no dismiss scrim — the canvas stays live underneath, and they close via their own header, Shape's Done, picking an emoji, or switching tabs.

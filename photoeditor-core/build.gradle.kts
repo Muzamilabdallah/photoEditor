@@ -1,23 +1,28 @@
+import com.vanniktech.maven.publish.AndroidSingleVariantLibrary
+import com.vanniktech.maven.publish.JavadocJar
+import com.vanniktech.maven.publish.SourcesJar
+
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
-    `maven-publish`
+    alias(libs.plugins.maven.publish)
 }
 
-// Project-level coordinates (not just publication-level) so that sibling
-// modules' generated POMs reference this artifact with the right GAV —
-// maven-publish derives POM dependency entries from project coordinates.
-group = "com.github.Muzamilabdallah"
-// 0.x: the public API is still moving — breaking changes land in minor bumps
-// until it settles enough to promise stability with 1.0.0.
-version = "0.2.0"
+// Project-level coordinates (not just publication-level) so the POM that
+// ui-default generates references core with the right group and version.
+// Both come from gradle.properties. JitPack builds keep the old
+// com.github.Muzamilabdallah group so existing JitPack users can still
+// resolve this release; it sets JITPACK=true in its build environment.
+group = if (System.getenv("JITPACK") == "true") "com.github.Muzamilabdallah"
+        else providers.gradleProperty("GROUP").get()
+version = providers.gradleProperty("VERSION_NAME").get()
 
 android {
     // Distinct from `:app` and `:photoeditor-ui-default` namespaces so AGP
     // doesn't merge R classes. Kotlin source still lives under
-    // com.muzamil.photoeditor.* for a clean public API surface.
-    namespace = "com.muzamil.photoeditor.core"
+    // io.github.photoforge.* for a clean public API surface.
+    namespace = "io.github.photoforge.core"
     compileSdk {
         version = release(36)
     }
@@ -52,40 +57,50 @@ android {
         unitTests.isIncludeAndroidResources = true
     }
 
-    publishing {
-        singleVariant("release") {
-            withSourcesJar()
-        }
-    }
 }
 
-// JitPack consumes this via `com.github.Muzamilabdallah.photoEditor:photoeditor-core:<tag>`.
-// JitPack overrides group/version from the git tag, but they're set here so
-// `publishToMavenLocal` produces sensible coordinates for local testing too.
-publishing {
-    publications {
-        register<MavenPublication>("release") {
-            groupId = project.group.toString()
-            artifactId = "photoeditor-core"
-            version = project.version.toString()
-            afterEvaluate {
-                from(components["release"])
+// Central artifact: io.github.photoforge:photoforge-core. JitPack keeps the
+// pre-rename artifact name so its existing coordinates still resolve.
+val artifactId = if (System.getenv("JITPACK") == "true") "photoeditor-core" else "photoforge-core"
+
+mavenPublishing {
+    coordinates(project.group.toString(), artifactId, project.version.toString())
+    configure(
+        AndroidSingleVariantLibrary(
+            javadocJar = JavadocJar.Empty(),   // Central requires one; the KDoc ships in sources
+            sourcesJar = SourcesJar.Sources(),
+            variant = "release",
+        )
+    )
+    publishToMavenCentral()
+    // Sign only when a key is configured (the release workflow), so local,
+    // CI and JitPack builds can still publishToMavenLocal without one.
+    if (providers.gradleProperty("signingInMemoryKey").isPresent) {
+        signAllPublications()
+    }
+    pom {
+        name = "PhotoForge Core"
+        description = "UI-agnostic photo editor engine for Jetpack Compose: editing canvas, element model, undo/redo, state holder, export."
+        inceptionYear = "2026"
+        url = "https://github.com/Muzamilabdallah/photoEditor"
+        licenses {
+            license {
+                name = "The Apache License, Version 2.0"
+                url = "https://www.apache.org/licenses/LICENSE-2.0.txt"
+                distribution = "repo"
             }
-            pom {
-                name = "photoeditor-core"
-                description = "UI-agnostic photo editor engine for Jetpack Compose: " +
-                        "editing canvas, element model, undo/redo, state holder, export."
-                url = "https://github.com/Muzamilabdallah/photoEditor"
-                licenses {
-                    license {
-                        name = "The Apache License, Version 2.0"
-                        url = "https://www.apache.org/licenses/LICENSE-2.0.txt"
-                    }
-                }
-                scm {
-                    url = "https://github.com/Muzamilabdallah/photoEditor"
-                }
+        }
+        developers {
+            developer {
+                id = "Muzamilabdallah"
+                name = "Muzamilabdallah"
+                url = "https://github.com/Muzamilabdallah"
             }
+        }
+        scm {
+            url = "https://github.com/Muzamilabdallah/photoEditor"
+            connection = "scm:git:https://github.com/Muzamilabdallah/photoEditor.git"
+            developerConnection = "scm:git:ssh://git@github.com/Muzamilabdallah/photoEditor.git"
         }
     }
 }

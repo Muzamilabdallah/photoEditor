@@ -11,9 +11,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
-import com.muzamil.photoeditor.image.decodeEditableBitmap
-import com.muzamil.photoeditor.state.rememberPhotoEditorState
-import com.muzamil.photoeditor.ui.PhotoEditor
+import io.github.photoforge.image.decodeEditableBitmap
+import io.github.photoforge.state.rememberPhotoEditorState
+import io.github.photoforge.ui.PhotoEditor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
