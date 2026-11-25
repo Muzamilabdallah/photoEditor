@@ -1,0 +1,512 @@
+package io.github.photoforge.state
+
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import io.github.photoforge.domain.EditElement
+import io.github.photoforge.domain.EditorHistoryState
+import io.github.photoforge.domain.EditorShape
+import io.github.photoforge.domain.EditorTool
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Before
+import org.junit.Test
+
+class PhotoEditorStateTest {
+
+    private lateinit var state: PhotoEditorState
+
+    private val editorState get() = state.editorState
+    private val elements get() = editorState.elements
+
+    @Before
+    fun setUp() {
+        state = PhotoEditorState(CoroutineScope(Dispatchers.Unconfined))
+    }
+
+    // ── Elements ──────────────────────────────────────────────────────────────
+
+    @Test
+    fun `addText adds a text element with the default style`() {
+        state.addText("hello", Offset(0.25f, 0.75f))
+
+        val text = elements.single() as EditElement.Text
+        assertEquals("hello", text.text)
+        assertEquals(0.25f, text.offsetRatioX, 0f)
+        assertEquals(0.75f, text.offsetRatioY, 0f)
+        assertEquals(editorState.textColor, text.color)
+        assertTrue(state.canUndo)
+    }
+
+    @Test
+    fun `addText uses the text size default`() {
+        state.updateTextStyle(sizeRatio = 0.15f)
+        state.addText("big")
+        assertEquals(0.15f, (elements.single() as EditElement.Text).fontSizeRatio, 0f)
+    }
+
+    @Test
+    fun `addEmoji and addShape append with increasing zIndex`() {
+        state.addEmoji("😀")
+        state.addShape(EditorShape.Circle)
+        state.addText("t")
+
+        assertEquals(listOf(0, 1, 2), elements.map { it.zIndex })
+        assertTrue(elements[1] is EditElement.Shape)
+    }
+
+    @Test
+    fun `new elements never reuse a zIndex after a delete`() {
+        state.addText("a")
+        state.addText("b")
+        state.addText("c")
+        state.deleteElement(elements[1].id)
+
+        state.startDrawing(Offset(0.5f, 0.5f))
+        state.finishDrawing()
+        state.addEmoji("😀")
+        state.duplicateElement(elements[0].id)
+
+        val zs = elements.map { it.zIndex }
+        assertEquals(zs.distinct(), zs)
+        // Each new element lands on top of everything before it.
+        assertEquals(zs.sorted(), zs)
+    }
+
+    @Test
+    fun `deleteElement removes the element and its selection`() {
+        state.addEmoji("😀")
+        val id = elements.single().id
+        state.selectElement(id)
+
+        state.deleteElement(id)
+
+        assertTrue(elements.isEmpty())
+        assertNull(editorState.selectedElementId)
+    }
+
+    @Test
+    fun `clearAll removes everything and is undoable`() {
+        state.addText("a")
+        state.addEmoji("😀")
+        state.clearAll()
+        assertTrue(elements.isEmpty())
+
+        state.undo()
+        assertEquals(2, elements.size)
+    }
+
+    @Test
+    fun `duplicateElement copies style and nudges position`() {
+        state.addShape(EditorShape.Star)
+        val original = elements.single() as EditElement.Shape
+
+        val newId = state.duplicateElement(original.id)
+
+        assertEquals(2, elements.size)
+        val copy = elements.last() as EditElement.Shape
+        assertEquals(newId, copy.id)
+        assertTrue(copy.id != original.id)
+        assertEquals(original.kind, copy.kind)
+        assertEquals(original.color, copy.color)
+        assertEquals(original.offsetRatioX + 0.03f, copy.offsetRatioX, 1e-4f)
+        assertEquals(original.offsetRatioY + 0.03f, copy.offsetRatioY, 1e-4f)
+        assertEquals(1, copy.zIndex)
+    }
+
+    @Test
+    fun `duplicateElement is undoable and returns null for unknown ids`() {
+        assertNull(state.duplicateElement("nope"))
+
+        state.addText("t")
+        state.duplicateElement(elements.single().id)
+        assertEquals(2, elements.size)
+
+        state.undo()
+        assertEquals(1, elements.size)
+    }
+
+    @Test
+    fun `duplicateElement nudges drawing points`() {
+        state.startDrawing(Offset(0.1f, 0.2f))
+        state.finishDrawing()
+        val original = elements.single() as EditElement.Drawing
+
+        state.duplicateElement(original.id)
+
+        val copy = elements.last() as EditElement.Drawing
+        assertEquals(0.13f, copy.points.single().x, 1e-4f)
+        assertEquals(0.23f, copy.points.single().y, 1e-4f)
+    }
+
+    // ── Drawing ───────────────────────────────────────────────────────────────
+
+    @Test
+    fun `startDrawing creates a drawing using the current defaults`() {
+        state.updateDrawingStyle(color = Color.Red, strokeWidthRatio = 0.012f)
+        state.startDrawing(Offset(0.1f, 0.2f))
+
+        val drawing = elements.single() as EditElement.Drawing
+        assertEquals(listOf(Offset(0.1f, 0.2f)), drawing.points)
+        assertEquals(Color.Red, drawing.color)
+        assertEquals(0.012f, drawing.strokeWidthRatio, 0f)
+    }
+
+    @Test
+    fun `continueDrawing appends a whole batch of points`() {
+        state.startDrawing(Offset(0.1f, 0.1f))
+        state.continueDrawing(listOf(Offset(0.2f, 0.2f), Offset(0.3f, 0.3f)))
+        state.continueDrawing(listOf(Offset(0.4f, 0.4f)))
+
+        val drawing = elements.single() as EditElement.Drawing
+        assertEquals(4, drawing.points.size)
+        assertEquals(Offset(0.4f, 0.4f), drawing.points.last())
+    }
+
+    @Test
+    fun `continueDrawing with an empty batch changes nothing`() {
+        state.startDrawing(Offset(0.1f, 0.1f))
+        val before = editorState
+        state.continueDrawing(emptyList())
+        assertEquals(before, editorState)
+    }
+
+    @Test
+    fun `continueDrawing without an in-progress drawing is a no-op`() {
+        state.addText("not a drawing")
+        state.continueDrawing(listOf(Offset(0.5f, 0.5f)))
+
+        assertTrue(elements.single() is EditElement.Text)
+    }
+
+    @Test
+    fun `a stroke is one undo step - undo removes the whole drawing`() {
+        state.startDrawing(Offset(0.1f, 0.1f))
+        state.continueDrawing(listOf(Offset(0.2f, 0.2f), Offset(0.3f, 0.3f)))
+        state.finishDrawing()
+
+        state.undo()
+        assertTrue(elements.isEmpty())
+
+        state.redo()
+        val drawing = elements.single() as EditElement.Drawing
+        assertEquals(3, drawing.points.size)
+    }
+
+    // ── Transform ─────────────────────────────────────────────────────────────
+
+    @Test
+    fun `updateElementTransform clamps text scale to half through 3x`() {
+        state.addText("t")
+        val id = elements.single().id
+
+        state.updateElementTransform(id, 0.5f, 0.5f, 0f, scale = 99f)
+        assertEquals(3f, elements.single().scale, 0f)
+
+        state.updateElementTransform(id, 0.5f, 0.5f, 0f, scale = 0.01f)
+        assertEquals(0.5f, elements.single().scale, 0f)
+    }
+
+    @Test
+    fun `updateElementTransform moves and rotates the element`() {
+        state.addEmoji("😀")
+        val id = elements.single().id
+
+        state.updateElementTransform(id, 0.9f, 0.1f, rotation = 45f, scale = 2f)
+
+        val emoji = elements.single()
+        assertEquals(0.9f, emoji.offsetRatioX, 0f)
+        assertEquals(0.1f, emoji.offsetRatioY, 0f)
+        assertEquals(45f, emoji.rotation, 0f)
+        assertEquals(2f, emoji.scale, 0f)
+    }
+
+    /** Simulates a canvas drag: gesture start, per-frame transforms, gesture end. */
+    private fun drag(id: String, vararg frames: Pair<Float, Float>) {
+        state.setInteracting(true)
+        frames.forEach { (x, y) -> state.updateElementTransform(id, x, y, 0f, 1f) }
+        state.setInteracting(false)
+    }
+
+    @Test
+    fun `per-frame transforms do not push history until the gesture ends`() {
+        state.addText("t")
+        val id = elements.single().id
+
+        state.setInteracting(true)
+        state.updateElementTransform(id, 0.6f, 0.6f, 0f, 1f)
+        state.updateElementTransform(id, 0.7f, 0.7f, 0f, 1f)
+        assertFalse(state.canRedo)
+
+        state.setInteracting(false)
+        state.undo() // reverts the drag only
+        assertEquals(0.5f, elements.single().offsetRatioX, 0f)
+        state.undo() // then the add
+        assertTrue(elements.isEmpty())
+    }
+
+    @Test
+    fun `a drag is exactly one undo step`() {
+        state.addText("t")
+        val id = elements.single().id
+        drag(id, 0.6f to 0.6f, 0.7f to 0.7f, 0.9f to 0.1f)
+
+        state.undo()
+        val text = elements.single()
+        assertEquals(0.5f, text.offsetRatioX, 0f)
+        assertEquals(0.5f, text.offsetRatioY, 0f)
+    }
+
+    @Test
+    fun `redo restores the moved position`() {
+        state.addText("t")
+        val id = elements.single().id
+        drag(id, 0.9f to 0.1f)
+
+        state.undo()
+        state.undo()
+        assertTrue(elements.isEmpty())
+
+        state.redo()
+        assertEquals(0.5f, elements.single().offsetRatioX, 0f)
+        state.redo()
+        assertEquals(0.9f, elements.single().offsetRatioX, 0f)
+        assertEquals(0.1f, elements.single().offsetRatioY, 0f)
+    }
+
+    @Test
+    fun `a gesture that changes nothing adds no history entry`() {
+        state.addText("t")
+        state.setInteracting(true)
+        state.setInteracting(false)
+        // Repeated "not interacting" reports (one per element) are harmless.
+        state.setInteracting(false)
+
+        state.undo()
+        assertTrue(elements.isEmpty())
+        assertFalse(state.canUndo)
+    }
+
+    @Test
+    fun `uncommitted transforms become their own step on undo`() {
+        state.addText("t")
+        val id = elements.single().id
+        // Programmatic transform outside any gesture, never explicitly committed.
+        state.updateElementTransform(id, 0.9f, 0.9f, 0f, 1f)
+
+        state.undo()
+        assertEquals(0.5f, elements.single().offsetRatioX, 0f)
+        state.redo()
+        assertEquals(0.9f, elements.single().offsetRatioX, 0f)
+    }
+
+    @Test
+    fun `finishDrawing then gesture end is one undo step`() {
+        state.setInteracting(true)
+        state.startDrawing(Offset(0.1f, 0.1f))
+        state.continueDrawing(listOf(Offset(0.2f, 0.2f)))
+        state.finishDrawing()
+        state.setInteracting(false)
+
+        state.undo()
+        assertTrue(elements.isEmpty())
+        assertFalse(state.canUndo)
+    }
+
+    // ── Selection & tools ─────────────────────────────────────────────────────
+
+    @Test
+    fun `selectElement with an empty id clears the selection`() {
+        state.addText("t")
+        state.selectElement(elements.single().id)
+        assertEquals(elements.single().id, editorState.selectedElementId)
+
+        state.selectElement("")
+        assertNull(editorState.selectedElementId)
+    }
+
+    @Test
+    fun `selecting a tool deselects any element`() {
+        state.addText("t")
+        state.selectElement(elements.single().id)
+
+        state.selectTool(EditorTool.Drawing)
+
+        assertEquals(EditorTool.Drawing, editorState.currentTool)
+        assertNull(editorState.selectedElementId)
+    }
+
+    @Test
+    fun `selectedElementBounds clears on deselect and delete`() {
+        state.addEmoji("😀")
+        val id = elements.single().id
+        state.selectElement(id)
+        state.reportSelectedElementBounds(androidx.compose.ui.geometry.Rect(0f, 0f, 10f, 10f))
+        assertTrue(state.selectedElementBounds != null)
+
+        state.deselectElement()
+        assertNull(state.selectedElementBounds)
+
+        state.selectElement(id)
+        state.reportSelectedElementBounds(androidx.compose.ui.geometry.Rect(0f, 0f, 10f, 10f))
+        state.deleteElement(id)
+        assertNull(state.selectedElementBounds)
+    }
+
+    @Test
+    fun `bounds reports are ignored without a selection`() {
+        state.reportSelectedElementBounds(androidx.compose.ui.geometry.Rect(0f, 0f, 10f, 10f))
+        assertNull(state.selectedElementBounds)
+    }
+
+    // ── Undo / redo flags ─────────────────────────────────────────────────────
+
+    @Test
+    fun `undo and redo flags follow the history state`() {
+        assertFalse(state.canUndo)
+        assertFalse(state.canRedo)
+
+        state.addText("t")
+        assertTrue(state.canUndo)
+        assertFalse(state.canRedo)
+
+        state.undo()
+        assertFalse(state.canUndo)
+        assertTrue(state.canRedo)
+
+        state.redo()
+        assertTrue(state.canUndo)
+        assertFalse(state.canRedo)
+    }
+
+    @Test
+    fun `historyState mirrors the undo and redo flags`() {
+        assertEquals(EditorHistoryState(canUndo = false, canRedo = false), state.historyState)
+
+        state.addText("t")
+        assertEquals(EditorHistoryState(canUndo = true, canRedo = false), state.historyState)
+
+        state.undo()
+        assertEquals(EditorHistoryState(canUndo = false, canRedo = true), state.historyState)
+
+        state.redo()
+        assertEquals(EditorHistoryState(canUndo = true, canRedo = false), state.historyState)
+    }
+
+    // ── Styles ────────────────────────────────────────────────────────────────
+
+    @Test
+    fun `updateSelectedTextStyle only touches the selected element`() {
+        state.addText("a")
+        state.addText("b")
+        val first = elements[0].id
+        state.selectElement(first)
+
+        state.updateSelectedTextStyle(color = Color.Green, fontSizeRatio = 0.04f)
+
+        val styled = elements[0] as EditElement.Text
+        val untouched = elements[1] as EditElement.Text
+        assertEquals(Color.Green, styled.color)
+        assertEquals(0.04f, styled.fontSizeRatio, 0f)
+        assertEquals(editorState.textColor, untouched.color)
+    }
+
+    @Test
+    fun `style change is undoable`() {
+        state.addShape(EditorShape.Rect)
+        val original = elements.single() as EditElement.Shape
+        state.selectElement(original.id)
+
+        state.updateSelectedShapeStyle(color = Color.Blue)
+        state.updateSelectedShapeStyle(filled = true)
+
+        state.undo()
+        val afterOne = elements.single() as EditElement.Shape
+        assertEquals(Color.Blue, afterOne.color)
+        assertFalse(afterOne.filled)
+
+        state.undo()
+        assertEquals(original.color, (elements.single() as EditElement.Shape).color)
+    }
+
+    @Test
+    fun `a slider drag committed on release is one undo step`() {
+        state.addText("t")
+        state.selectElement(elements.single().id)
+
+        listOf(0.08f, 0.09f, 0.1f, 0.12f).forEach { state.updateSelectedTextStyle(fontSizeRatio = it) }
+        state.commitPendingChanges()
+        assertEquals(0.12f, (elements.single() as EditElement.Text).fontSizeRatio, 0f)
+
+        state.undo()
+        assertEquals(EditElement.DefaultTextSizeRatio, (elements.single() as EditElement.Text).fontSizeRatio, 0f)
+        state.redo()
+        assertEquals(0.12f, (elements.single() as EditElement.Text).fontSizeRatio, 0f)
+    }
+
+    @Test
+    fun `editing text content is undoable`() {
+        state.addText("before")
+        val id = elements.single().id
+        state.updateTextContent(id, "after")
+
+        state.undo()
+        assertEquals("before", (elements.single() as EditElement.Text).text)
+    }
+
+    @Test
+    fun `commitPendingChanges with nothing pending is a no-op`() {
+        state.addText("t")
+        state.commitPendingChanges()
+        state.undo()
+        assertTrue(elements.isEmpty())
+    }
+
+    @Test
+    fun `pending edits are committed separately before the next action`() {
+        state.addText("t")
+        val id = elements.single().id
+        state.updateElementTransform(id, 0.9f, 0.9f, 0f, 1f)
+        state.addEmoji("😀")
+
+        state.undo() // removes the emoji only
+        assertEquals(1, elements.size)
+        assertEquals(0.9f, elements.single().offsetRatioX, 0f)
+    }
+
+    @Test
+    fun `updateShapeTool changes defaults for the next shape`() {
+        state.updateShapeTool(color = Color.Blue, strokeWidthRatio = 0.02f, filled = true)
+        state.addShape(EditorShape.Star)
+
+        val shape = elements.single() as EditElement.Shape
+        assertEquals(Color.Blue, shape.color)
+        assertEquals(0.02f, shape.strokeWidthRatio, 0f)
+        assertTrue(shape.filled)
+    }
+
+    @Test
+    fun `addShape without an argument places the tool's selected shape`() {
+        state.updateShapeTool(shape = EditorShape.Heart)
+        state.addShape()
+
+        val shape = elements.single() as EditElement.Shape
+        assertEquals(EditorShape.Heart, shape.kind)
+    }
+
+    // ── Interaction ───────────────────────────────────────────────────────────
+
+    @Test
+    fun `isInteracting is false until a gesture is reported`() {
+        assertEquals(false, state.isInteracting)
+
+        state.setInteracting(true)
+        assertEquals(true, state.isInteracting)
+
+        state.setInteracting(false)
+        assertEquals(false, state.isInteracting)
+    }
+}

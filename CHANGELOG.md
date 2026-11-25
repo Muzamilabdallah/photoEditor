@@ -6,6 +6,13 @@ and the project uses [Semantic Versioning](https://semver.org/) (pre-1.0: minor 
 
 ## [Unreleased] — 0.2.0
 
+**The library is now PhotoForge, on Maven Central.**
+`io.github.photoforge:photoforge-core` and `io.github.photoforge:photoforge-ui`
+replace JitPack's `com.github.Muzamilabdallah.photoEditor:photoeditor-core` /
+`photoeditor-ui-default`, and the Kotlin package `com.muzamil.photoeditor` is
+now `io.github.photoforge` (find-and-replace your imports). The JitPack
+coordinates still build for 0.2.0 only, then stop being maintained.
+
 **Breaking.** Element coordinates and sizes changed meaning, so this is a
 new minor version. Saved editor state from 0.1.x is discarded on restore
 (the editor starts empty) rather than restored to the wrong place.
@@ -34,6 +41,8 @@ new minor version. Saved editor state from 0.1.x is discarded on restore
   it used to ignore it.
 
 ### Added
+- Published to Maven Central (signed), with a tag-triggered release workflow
+  that also creates the GitHub Release from this file. See RELEASING.md.
 - **Suspend export API on `PhotoEditorState`** that returns a `Result` instead
   of setting UI state: `export(context, destination, format): Result<Uri>`,
   `exportTo(stream, format)` (e.g. for uploads, no file), and

@@ -10,6 +10,7 @@ activityCompose = "1.8.0"
 composeBom = "2024.09.00"
 uiUnit = "1.11.1"
 robolectric = "4.14.1"
+mavenPublish = "0.37.0"
 androidxTestCore = "1.6.1"
 androidxTestRunner = "1.6.2"
 
@@ -41,5 +42,6 @@ androidx-test-core = { group = "androidx.test", name = "core", version.ref = "an
 android-application = { id = "com.android.application", version.ref = "agp" }
 android-library = { id = "com.android.library", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+maven-publish = { id = "com.vanniktech.maven.publish", version.ref = "mavenPublish" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 

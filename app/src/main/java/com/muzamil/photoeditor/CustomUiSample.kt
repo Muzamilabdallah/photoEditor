@@ -38,13 +38,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.muzamil.photoeditor.canvas.EditorShapePaths
-import com.muzamil.photoeditor.canvas.PhotoEditorCanvas
-import com.muzamil.photoeditor.domain.EditorColors
-import com.muzamil.photoeditor.domain.EditorShape
-import com.muzamil.photoeditor.domain.EditorTool
-import com.muzamil.photoeditor.image.decodeEditableBitmap
-import com.muzamil.photoeditor.state.rememberPhotoEditorState
+import io.github.photoforge.canvas.EditorShapePaths
+import io.github.photoforge.canvas.PhotoEditorCanvas
+import io.github.photoforge.domain.EditorColors
+import io.github.photoforge.domain.EditorShape
+import io.github.photoforge.domain.EditorTool
+import io.github.photoforge.image.decodeEditableBitmap
+import io.github.photoforge.state.rememberPhotoEditorState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
