@@ -71,6 +71,8 @@ internal fun EditorStylePanel(
     onClose: (() -> Unit)?,
     modifier: Modifier = Modifier,
     swatchColors: List<Color> = PhotoEditorDefaults.swatchColors,
+    // Fired when a slider is released, so a whole drag is one undo step.
+    onSliderReleased: () -> Unit = {},
 ) {
     val colors = LocalPhotoEditorColors.current
     val typography = LocalPhotoEditorTypography.current
@@ -115,6 +117,7 @@ internal fun EditorStylePanel(
                         label = "Size",
                         value = context.fontSize.value,
                         range = 12f..96f,
+                        onChangeFinished = onSliderReleased,
                         onChange = { context.onFontSize(TextUnit(it, TextUnitType.Sp)) }
                     )
                 }
@@ -123,6 +126,7 @@ internal fun EditorStylePanel(
                         label = "Size",
                         value = context.size.value,
                         range = 24f..160f,
+                        onChangeFinished = onSliderReleased,
                         onChange = { context.onSize(TextUnit(it, TextUnitType.Sp)) }
                     )
                 }
@@ -136,6 +140,7 @@ internal fun EditorStylePanel(
                         label = "Stroke",
                         value = context.strokeWidth,
                         range = 1f..50f,
+                        onChangeFinished = onSliderReleased,
                         onChange = context.onStroke
                     )
                 }
@@ -149,6 +154,7 @@ internal fun EditorStylePanel(
                         label = "Stroke",
                         value = context.strokeWidth,
                         range = 1f..50f,
+                        onChangeFinished = onSliderReleased,
                         onChange = context.onStroke
                     )
                     Row(
@@ -183,7 +189,8 @@ internal fun LabeledSlider(
     label: String,
     value: Float,
     range: ClosedFloatingPointRange<Float>,
-    onChange: (Float) -> Unit
+    onChange: (Float) -> Unit,
+    onChangeFinished: () -> Unit = {},
 ) {
     val colors = LocalPhotoEditorColors.current
     val typography = LocalPhotoEditorTypography.current
@@ -201,6 +208,7 @@ internal fun LabeledSlider(
         Slider(
             value = value,
             onValueChange = onChange,
+            onValueChangeFinished = onChangeFinished,
             valueRange = range,
             colors = SliderDefaults.colors(
                 thumbColor = colors.accent,

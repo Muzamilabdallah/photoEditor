@@ -6,6 +6,9 @@ internal class HistoryManager {
     private val undoStack = ArrayDeque<List<EditElement>>()
     private val redoStack = ArrayDeque<List<EditElement>>()
     private var currentState: List<EditElement> = emptyList()
+
+    /** The last committed snapshot (what undo would move away from). */
+    val current: List<EditElement> get() = currentState
     
     fun initialize(elements: List<EditElement>) {
         currentState = elements

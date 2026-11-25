@@ -70,6 +70,7 @@ internal fun EditorHostContent(
         onUpdateSelectedEmojiSize = state::updateSelectedEmojiSize,
         onUpdateSelectedDrawingStyle = state::updateSelectedDrawingStyle,
         onUpdateSelectedShapeStyle = state::updateSelectedShapeStyle,
+        onCommitPendingChanges = state::commitPendingChanges,
         modifier = modifier,
         canvasContent = {
             PhotoEditorCanvas(
