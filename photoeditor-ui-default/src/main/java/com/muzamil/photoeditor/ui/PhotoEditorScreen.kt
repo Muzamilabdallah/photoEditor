@@ -45,7 +45,6 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import com.muzamil.photoeditor.domain.EditElement
 import com.muzamil.photoeditor.domain.EditorHistoryState
@@ -94,10 +93,10 @@ internal fun PhotoEditorScreen(
     emojis: List<String>,
     swatchColors: List<Color>,
 
-    onUpdateTextDefault: (Color?, TextUnit?) -> Unit,
+    onUpdateTextDefault: (Color?, Float?) -> Unit,
     onUpdateDrawingDefault: (Color?, Float?) -> Unit,
-    onUpdateSelectedTextStyle: (Color?, TextUnit?) -> Unit,
-    onUpdateSelectedEmojiSize: (TextUnit) -> Unit,
+    onUpdateSelectedTextStyle: (Color?, Float?) -> Unit,
+    onUpdateSelectedEmojiSize: (Float) -> Unit,
     onUpdateSelectedDrawingStyle: (Color?, Float?) -> Unit,
     onUpdateSelectedShapeStyle: (Color?, Float?, Boolean?) -> Unit,
     onCommitPendingChanges: () -> Unit,
@@ -399,10 +398,10 @@ private fun Modifier.swallowTaps(): Modifier =
     pointerInput(Unit) { detectTapGestures {} }
 
 private fun EditorState.toStyleContext(
-    onUpdateTextDefault: (Color?, TextUnit?) -> Unit,
+    onUpdateTextDefault: (Color?, Float?) -> Unit,
     onUpdateDrawingDefault: (Color?, Float?) -> Unit,
-    onUpdateSelectedTextStyle: (Color?, TextUnit?) -> Unit,
-    onUpdateSelectedEmojiSize: (TextUnit) -> Unit,
+    onUpdateSelectedTextStyle: (Color?, Float?) -> Unit,
+    onUpdateSelectedEmojiSize: (Float) -> Unit,
     onUpdateSelectedDrawingStyle: (Color?, Float?) -> Unit,
     onUpdateSelectedShapeStyle: (Color?, Float?, Boolean?) -> Unit
 ): StyleContext? {
@@ -410,26 +409,26 @@ private fun EditorState.toStyleContext(
     return when {
         selected is EditElement.Text -> StyleContext.TextStyle(
             color = selected.color,
-            fontSize = selected.fontSize,
+            fontSizeRatio = selected.fontSizeRatio,
             onColor = { onUpdateSelectedTextStyle(it, null) },
             onFontSize = { onUpdateSelectedTextStyle(null, it) }
         )
 
         selected is EditElement.Emoji -> StyleContext.EmojiStyle(
-            size = selected.size,
+            sizeRatio = selected.sizeRatio,
             onSize = onUpdateSelectedEmojiSize
         )
 
         selected is EditElement.Drawing -> StyleContext.DrawingStyle(
             color = selected.color,
-            strokeWidth = selected.strokeWidth,
+            strokeWidthRatio = selected.strokeWidthRatio,
             onColor = { onUpdateSelectedDrawingStyle(it, null) },
             onStroke = { onUpdateSelectedDrawingStyle(null, it) }
         )
 
         selected is EditElement.Shape -> StyleContext.ShapeStyle(
             color = selected.color,
-            strokeWidth = selected.strokeWidth,
+            strokeWidthRatio = selected.strokeWidthRatio,
             filled = selected.filled,
             onColor = { onUpdateSelectedShapeStyle(it, null, null) },
             onStroke = { onUpdateSelectedShapeStyle(null, it, null) },
@@ -438,14 +437,14 @@ private fun EditorState.toStyleContext(
 
         currentTool == EditorTool.Text -> StyleContext.TextStyle(
             color = textColor,
-            fontSize = textSize,
+            fontSizeRatio = textSizeRatio,
             onColor = { onUpdateTextDefault(it, null) },
             onFontSize = { onUpdateTextDefault(null, it) }
         )
 
         currentTool == EditorTool.Drawing -> StyleContext.DrawingStyle(
             color = drawingColor,
-            strokeWidth = drawingStrokeWidth,
+            strokeWidthRatio = drawingStrokeWidthRatio,
             onColor = { onUpdateDrawingDefault(it, null) },
             onStroke = { onUpdateDrawingDefault(null, it) }
         )

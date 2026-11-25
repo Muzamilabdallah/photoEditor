@@ -16,9 +16,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.IntSize
-import androidx.compose.ui.unit.TextUnit
-import androidx.compose.ui.unit.sp
 import com.muzamil.photoeditor.domain.EditElement
 import com.muzamil.photoeditor.domain.EditorHistoryState
 import com.muzamil.photoeditor.domain.EditorShape
@@ -110,11 +107,6 @@ class PhotoEditorState internal constructor(
     var isInteracting: Boolean by mutableStateOf(false)
         private set
 
-    // Preview container size in device pixels — the exporter derives the crop
-    // scale from it. Updated from onSizeChanged in the UI.
-    internal var containerSize: IntSize by mutableStateOf(IntSize.Zero)
-        private set
-
     private val historyManager = HistoryManager().apply { initialize(initial.elements) }
 
     private inline fun update(transform: (EditorState) -> EditorState) {
@@ -132,11 +124,6 @@ class PhotoEditorState internal constructor(
 
     fun loadImage(bitmap: Bitmap) {
         update { it.copy(backgroundBitmap = bitmap) }
-    }
-
-    internal fun setContainerSize(size: IntSize) {
-        if (size.width <= 0 || size.height <= 0) return
-        containerSize = size
     }
 
     internal fun setInteracting(interacting: Boolean) {
@@ -158,7 +145,7 @@ class PhotoEditorState internal constructor(
             offsetRatioX = position.x,
             offsetRatioY = position.y,
             color = editorState.textColor,
-            fontSize = 28.sp,
+            fontSizeRatio = editorState.textSizeRatio,
             fontWeight = FontWeight.Bold,
             zIndex = editorState.elements.nextZIndex(),
         )
@@ -173,21 +160,26 @@ class PhotoEditorState internal constructor(
         commitIfChanged()
     }
 
-    fun updateTextStyle(color: Color? = null, size: TextUnit? = null) {
+    /**
+     * Updates the style for the next [addText]. [sizeRatio] is a fraction of
+     * the image's shorter side (see [EditElement]).
+     */
+    fun updateTextStyle(color: Color? = null, sizeRatio: Float? = null) {
         update {
             it.copy(
                 textColor = color ?: it.textColor,
-                textSize = size ?: it.textSize,
+                textSizeRatio = sizeRatio ?: it.textSizeRatio,
             )
         }
     }
 
-    fun updateSelectedTextStyle(color: Color? = null, fontSize: TextUnit? = null) {
+    /** Restyles the selected text; [fontSizeRatio] is a fraction of the image's shorter side. */
+    fun updateSelectedTextStyle(color: Color? = null, fontSizeRatio: Float? = null) {
         val id = editorState.selectedElementId ?: return
         updateElement(id) { el ->
             if (el is EditElement.Text) el.copy(
                 color = color ?: el.color,
-                fontSize = fontSize ?: el.fontSize,
+                fontSizeRatio = fontSizeRatio ?: el.fontSizeRatio,
             ) else el
         }
         // Colour taps are discrete; size comes from a slider and is committed
@@ -207,17 +199,17 @@ class PhotoEditorState internal constructor(
             emoji = emoji,
             offsetRatioX = 0.5f,
             offsetRatioY = 0.5f,
-            size = 48.sp,
             zIndex = editorState.elements.nextZIndex(),
         )
         addElement(element)
         return element.id
     }
 
-    fun updateSelectedEmojiSize(size: TextUnit) {
+    /** Resizes the selected emoji; [sizeRatio] is a fraction of the image's shorter side. */
+    fun updateSelectedEmojiSize(sizeRatio: Float) {
         val id = editorState.selectedElementId ?: return
         updateElement(id) { el ->
-            if (el is EditElement.Emoji) el.copy(size = size) else el
+            if (el is EditElement.Emoji) el.copy(sizeRatio = sizeRatio) else el
         }
     }
 
@@ -234,7 +226,7 @@ class PhotoEditorState internal constructor(
         val element = EditElement.Shape(
             kind = shape,
             color = s.shapeTool.selectedColor,
-            strokeWidth = s.shapeTool.strokeWidthPx,
+            strokeWidthRatio = s.shapeTool.strokeWidthRatio,
             filled = s.shapeTool.isFilled,
             zIndex = s.elements.nextZIndex(),
         )
@@ -246,7 +238,7 @@ class PhotoEditorState internal constructor(
     fun updateShapeTool(
         shape: EditorShape? = null,
         color: Color? = null,
-        strokeWidth: Float? = null,
+        strokeWidthRatio: Float? = null,
         filled: Boolean? = null,
     ) {
         update {
@@ -254,7 +246,7 @@ class PhotoEditorState internal constructor(
                 shapeTool = it.shapeTool.copy(
                     selectedShape = shape ?: it.shapeTool.selectedShape,
                     selectedColor = color ?: it.shapeTool.selectedColor,
-                    strokeWidthPx = strokeWidth ?: it.shapeTool.strokeWidthPx,
+                    strokeWidthRatio = strokeWidthRatio ?: it.shapeTool.strokeWidthRatio,
                     isFilled = filled ?: it.shapeTool.isFilled,
                 )
             )
@@ -263,14 +255,14 @@ class PhotoEditorState internal constructor(
 
     fun updateSelectedShapeStyle(
         color: Color? = null,
-        strokeWidth: Float? = null,
+        strokeWidthRatio: Float? = null,
         filled: Boolean? = null,
     ) {
         val id = editorState.selectedElementId ?: return
         updateElement(id) { el ->
             if (el is EditElement.Shape) el.copy(
                 color = color ?: el.color,
-                strokeWidth = strokeWidth ?: el.strokeWidth,
+                strokeWidthRatio = strokeWidthRatio ?: el.strokeWidthRatio,
                 filled = filled ?: el.filled,
             ) else el
         }
@@ -287,7 +279,7 @@ class PhotoEditorState internal constructor(
                 elements = it.elements + EditElement.Drawing(
                     points = listOf(startPoint),
                     color = s.drawingColor,
-                    strokeWidth = s.drawingStrokeWidth,
+                    strokeWidthRatio = s.drawingStrokeWidthRatio,
                     zIndex = s.elements.nextZIndex(),
                 )
             )
@@ -311,21 +303,25 @@ class PhotoEditorState internal constructor(
         commitIfChanged()
     }
 
-    fun updateDrawingStyle(color: Color? = null, strokeWidth: Float? = null) {
+    /**
+     * Updates the style for the next freehand stroke. [strokeWidthRatio] is a
+     * fraction of the image's shorter side (see [EditElement]).
+     */
+    fun updateDrawingStyle(color: Color? = null, strokeWidthRatio: Float? = null) {
         update {
             it.copy(
                 drawingColor = color ?: it.drawingColor,
-                drawingStrokeWidth = strokeWidth ?: it.drawingStrokeWidth,
+                drawingStrokeWidthRatio = strokeWidthRatio ?: it.drawingStrokeWidthRatio,
             )
         }
     }
 
-    fun updateSelectedDrawingStyle(color: Color? = null, strokeWidth: Float? = null) {
+    fun updateSelectedDrawingStyle(color: Color? = null, strokeWidthRatio: Float? = null) {
         val id = editorState.selectedElementId ?: return
         updateElement(id) { el ->
             if (el is EditElement.Drawing) el.copy(
                 color = color ?: el.color,
-                strokeWidth = strokeWidth ?: el.strokeWidth,
+                strokeWidthRatio = strokeWidthRatio ?: el.strokeWidthRatio,
             ) else el
         }
         if (color != null) commitIfChanged()
@@ -509,14 +505,9 @@ class PhotoEditorState internal constructor(
         destination: SaveDestination = SaveDestination.Gallery(),
     ) {
         val bitmap = editorState.backgroundBitmap
-        val containerSize = containerSize
 
         if (bitmap == null) {
             update { it.copy(error = "No image to save") }
-            return
-        }
-        if (containerSize == IntSize.Zero) {
-            update { it.copy(error = "Preview not ready — try again") }
             return
         }
 
@@ -526,7 +517,6 @@ class PhotoEditorState internal constructor(
             context.saveEditedImage(
                 backgroundBitmap = bitmap,
                 elements = editorState.elements,
-                containerSize = containerSize,
                 quality = quality,
                 format = format,
                 destination = destination,
@@ -582,7 +572,7 @@ class PhotoEditorState internal constructor(
     }
 
     private companion object {
-        /** How far a duplicate is offset from its source, in container ratio. */
+        /** How far a duplicate is offset from its source, as a fraction of the image. */
         const val DUPLICATE_NUDGE_RATIO = 0.03f
     }
 }

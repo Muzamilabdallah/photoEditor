@@ -23,7 +23,7 @@ class HistoryManagerTest {
     private fun drawing(point: Offset) = EditElement.Drawing(
         points = listOf(point),
         color = Color.Black,
-        strokeWidth = 5f,
+        strokeWidthRatio = 0.005f,
     )
 
     @Test

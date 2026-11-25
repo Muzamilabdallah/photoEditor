@@ -13,15 +13,14 @@ import android.text.TextPaint
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
-import android.util.TypedValue
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.IntSize
 import androidx.core.graphics.withSave
 import com.muzamil.photoeditor.domain.EditElement
 import com.muzamil.photoeditor.domain.EditorShape
 import com.muzamil.photoeditor.domain.inRenderOrder
+import com.muzamil.photoeditor.domain.sizeUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -29,34 +28,132 @@ import java.io.FileOutputStream
 import java.io.IOException
 import kotlin.math.PI
 import kotlin.math.cos
-import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sin
 
 /**
- * Exports the edited image to storage.
+ * Draws [elements] onto a mutable ARGB_8888 copy of [source] at the source's
+ * full resolution and returns it; [source] is not modified. The caller owns
+ * the result (recycle it when done).
  *
- * Coordinate model
- * ────────────────
- * The preview uses ContentScale.Crop, so the inner container fills the screen
- * and some bitmap edges may be hidden. Element positions (offsetRatioX/Y) are
- * stored as fractions of the *container* (0 = left/top edge of visible area,
- * 1 = right/bottom edge of visible area), NOT fractions of the full bitmap.
+ * Pure: it depends only on the bitmap and the elements — no preview, screen
+ * size or display metrics — because every element is stored relative to the
+ * bitmap (see [EditElement]): positions as fractions of its width/height,
+ * sizes as fractions of its shorter side. That is what lets the on-screen
+ * preview and this export agree at any screen size, and lets you export from
+ * a worker or a test without a laid-out editor.
+ */
+fun renderEdits(source: Bitmap, elements: List<EditElement>): Bitmap {
+    val result = source.copy(Bitmap.Config.ARGB_8888, true)
+    val canvas = Canvas(result)
+    val bitmapW = result.width.toFloat()
+    val bitmapH = result.height.toFloat()
+    val unit = sizeUnit(bitmapW, bitmapH)
+
+    fun Float.toBitmapX() = this * bitmapW
+    fun Float.toBitmapY() = this * bitmapH
+
+    elements.inRenderOrder().forEach { element ->
+        when (element) {
+
+            // ── Text ─────────────────────────────────────────────────────────
+            is EditElement.Text -> {
+                val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color     = element.color.toArgb()
+                    textSize  = element.fontSizeRatio * unit
+                    typeface  = if (element.fontWeight == FontWeight.Bold)
+                        Typeface.DEFAULT_BOLD else Typeface.DEFAULT
+                    textAlign = Paint.Align.CENTER
+                }
+                val fm = paint.fontMetrics
+                // Shift baseline so glyphs are vertically centred on (0,0).
+                val baselineY = -(fm.ascent + fm.descent) / 2f
+
+                canvas.withSave {
+                    translate(element.offsetRatioX.toBitmapX(), element.offsetRatioY.toBitmapY())
+                    rotate(element.rotation)
+                    scale(element.scale, element.scale)
+                    drawText(element.text, 0f, baselineY, paint)
+                }
+            }
+
+            // ── Emoji ────────────────────────────────────────────────────────
+            is EditElement.Emoji -> {
+                val paint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+                    textSize = element.sizeRatio * unit
+                }
+                // Lay the glyph out the way Compose's BasicText does, so its
+                // box (and therefore its centre) matches the preview: no font
+                // padding, and line height taken from the fallback emoji font
+                // rather than the default font's metrics.
+                val layout = emojiLayout(element.emoji, paint)
+
+                canvas.withSave {
+                    translate(element.offsetRatioX.toBitmapX(), element.offsetRatioY.toBitmapY())
+                    rotate(element.rotation)
+                    scale(element.scale, element.scale)
+                    // Centre the laid-out line box on (0,0) in local space.
+                    translate(-layout.width / 2f, -layout.height / 2f)
+                    layout.draw(this)
+                }
+            }
+
+            // ── Drawing ──────────────────────────────────────────────────────
+            is EditElement.Drawing -> {
+                if (element.points.isEmpty()) return@forEach
+                val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color       = element.color.toArgb()
+                    strokeWidth = element.strokeWidthRatio * unit
+                    style       = Paint.Style.STROKE
+                    strokeCap   = Paint.Cap.ROUND
+                    strokeJoin  = Paint.Join.ROUND
+                }
+                val path = buildSmoothDrawingPath(element.points) { p ->
+                    Offset(p.x * bitmapW, p.y * bitmapH)
+                }
+                canvas.drawPath(path, paint)
+            }
+
+            // ── Shape ────────────────────────────────────────────────────────
+            is EditElement.Shape -> {
+                val halfW = element.widthRatio * unit / 2f
+                val halfH = element.heightRatio * unit / 2f
+
+                val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color       = element.color.toArgb()
+                    strokeWidth = element.strokeWidthRatio * unit
+                    style       = if (element.filled) Paint.Style.FILL else Paint.Style.STROKE
+                    strokeCap   = Paint.Cap.ROUND
+                    strokeJoin  = Paint.Join.ROUND
+                }
+
+                canvas.withSave {
+                    translate(element.offsetRatioX.toBitmapX(), element.offsetRatioY.toBitmapY())
+                    rotate(element.rotation)
+                    scale(element.scale, element.scale)
+                    when (element.kind) {
+                        EditorShape.Rect     -> drawRect(-halfW, -halfH, halfW, halfH, paint)
+                        EditorShape.Circle   -> drawOval(-halfW, -halfH, halfW, halfH, paint)
+                        EditorShape.Line     -> drawLine(-halfW, 0f, halfW, 0f, paint)
+                        EditorShape.Triangle -> drawPath(trianglePath(halfW, halfH), paint)
+                        EditorShape.Star     -> drawPath(starPath(halfW, halfH), paint)
+                        EditorShape.Arrow    -> drawPath(arrowPath(halfW, halfH), paint)
+                        EditorShape.Heart    -> drawPath(heartPath(halfW, halfH), paint)
+                    }
+                }
+            }
+        }
+    }
+    return result
+}
+
+/**
+ * Renders [elements] onto [backgroundBitmap] with [renderEdits] and writes the
+ * result to [destination].
  *
- * To convert back to bitmap pixels we must undo the crop:
- *
- *   cropScale  = max(containerPx / bitmapPx)      ← same as Crop display scale
- *   visibleW   = containerW / cropScale            ← bitmap pixels visible horizontally
- *   cropOffX   = (bitmapW − visibleW) / 2          ← hidden bitmap pixels on left
- *   bitmapX    = cropOffX + ratio * visibleW
- *
- * Font sizes follow the same logic:
- *   textSizeBitmapPx = spInDevicePx / cropScale
- *
- * @param backgroundBitmap  Original source bitmap (not mutated externally).
- * @param elements          All editor elements in z-order.
- * @param containerSize     Preview container size in **device pixels** (from onSizeChanged).
- * @param quality           JPEG compression quality (0–100).
+ * @param backgroundBitmap  Original source bitmap (not modified).
+ * @param elements          All editor elements.
+ * @param quality           Compression quality (0–100).
  * @param format            Output bitmap compress format.
  * @param destination       Where to write the result: [SaveDestination.Gallery]
  *                          (public, default) or [SaveDestination.File] (a path
@@ -67,220 +164,97 @@ import kotlin.math.sin
 suspend fun Context.saveEditedImage(
     backgroundBitmap: Bitmap,
     elements: List<EditElement>,
-    containerSize: IntSize,
     quality: Int = 95,
     format: Bitmap.CompressFormat = Bitmap.CompressFormat.JPEG,
     destination: SaveDestination = SaveDestination.Gallery(),
 ): Result<String> = withContext(Dispatchers.IO) {
     runCatching {
-        val resultBitmap = backgroundBitmap.copy(Bitmap.Config.ARGB_8888, true)
-        val canvas = Canvas(resultBitmap)
-        val bitmapW = resultBitmap.width.toFloat()
-        val bitmapH = resultBitmap.height.toFloat()
-
-        // ── Crop-scale geometry ──────────────────────────────────────────────
-        val scaleX = containerSize.width  / bitmapW
-        val scaleY = containerSize.height / bitmapH
-        // Crop uses the LARGER scale so the container is fully covered.
-        val cropScale = max(scaleX, scaleY)
-
-        // How many bitmap pixels are hidden on each side due to cropping.
-        val visibleBitmapW = containerSize.width  / cropScale
-        val visibleBitmapH = containerSize.height / cropScale
-        val cropOffsetX    = (bitmapW - visibleBitmapW) / 2f
-        val cropOffsetY    = (bitmapH - visibleBitmapH) / 2f
-
-        // Convert a container-normalised ratio → bitmap pixel coordinate.
-        fun Float.toBitmapX() = cropOffsetX + this * visibleBitmapW
-        fun Float.toBitmapY() = cropOffsetY + this * visibleBitmapH
-
-        // Convert sp (as stored in element) → bitmap pixel size.
-        val displayMetrics = resources.displayMetrics
-        fun spToBitmapPx(sp: Float): Float {
-            val devicePx = TypedValue.applyDimension(
-                TypedValue.COMPLEX_UNIT_SP, sp, displayMetrics
-            )
-            return devicePx / cropScale
+        val resultBitmap = renderEdits(backgroundBitmap, elements)
+        try {
+            writeBitmap(resultBitmap, quality, format, destination)
+        } finally {
+            resultBitmap.recycle()
         }
+    }
+}
 
-        // ── Render elements ──────────────────────────────────────────────────
-        elements.inRenderOrder().forEach { element ->
-            when (element) {
+private fun Context.writeBitmap(
+    resultBitmap: Bitmap,
+    quality: Int,
+    format: Bitmap.CompressFormat,
+    destination: SaveDestination,
+): String {
+    // ── Save to storage ──────────────────────────────────────────────────
+    val (extension, mimeType) = when (format) {
+        Bitmap.CompressFormat.PNG -> "png" to "image/png"
+        Bitmap.CompressFormat.JPEG -> "jpg" to "image/jpeg"
+        else -> "webp" to "image/webp"
+    }
 
-                // ── Text ─────────────────────────────────────────────────────
-                is EditElement.Text -> {
-                    val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                        color     = element.color.toArgb()
-                        textSize  = spToBitmapPx(element.fontSize.value)
-                        typeface  = if (element.fontWeight == FontWeight.Bold)
-                            Typeface.DEFAULT_BOLD else Typeface.DEFAULT
-                        textAlign = Paint.Align.CENTER
-                    }
-                    val centerX  = element.offsetRatioX.toBitmapX()
-                    val centerY  = element.offsetRatioY.toBitmapY()
-                    val fm       = paint.fontMetrics
-                    // Shift baseline so glyphs are vertically centred on (0,0).
-                    val baselineY = -(fm.ascent + fm.descent) / 2f
-
-                    canvas.withSave {
-                        translate(centerX, centerY)
-                        rotate(element.rotation)
-                        scale(element.scale, element.scale)
-                        drawText(element.text, 0f, baselineY, paint)
-                    }
-                }
-
-                // ── Emoji ─────────────────────────────────────────────────────
-                is EditElement.Emoji -> {
-                    val centerX = element.offsetRatioX.toBitmapX()
-                    val centerY = element.offsetRatioY.toBitmapY()
-
-                    val paint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
-                        textSize = spToBitmapPx(element.size.value)
-                    }
-                    // Lay the glyph out the way Compose's BasicText does, so its
-                    // box (and therefore its centre) matches the preview: no font
-                    // padding, and line height taken from the fallback emoji font
-                    // rather than the default font's metrics.
-                    val layout = emojiLayout(element.emoji, paint)
-
-                    canvas.withSave {
-                        translate(centerX, centerY)
-                        rotate(element.rotation)
-                        scale(element.scale, element.scale)
-                        // Centre the laid-out line box on (0,0) in local space.
-                        translate(-layout.width / 2f, -layout.height / 2f)
-                        layout.draw(this)
-                    }
-                }
-
-                // ── Drawing ───────────────────────────────────────────────────
-                // Drawing points are stored as bitmap-normalised ratios (0–1
-                // spans the full bitmap), so no crop offset is needed here.
-                is EditElement.Drawing -> {
-                    if (element.points.isEmpty()) return@forEach
-                    val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                        color       = element.color.toArgb()
-                        strokeWidth = element.strokeWidth
-                        style       = Paint.Style.STROKE
-                        strokeCap   = Paint.Cap.ROUND
-                        strokeJoin  = Paint.Join.ROUND
-                    }
-                    val path = buildSmoothDrawingPath(element.points) { p ->
-                        Offset(p.x * bitmapW, p.y * bitmapH)
-                    }
-                    canvas.drawPath(path, paint)
-                }
-
-                // ── Shape ─────────────────────────────────────────────────────
-                is EditElement.Shape -> {
-                    val centerX = element.offsetRatioX.toBitmapX()
-                    val centerY = element.offsetRatioY.toBitmapY()
-
-                    // widthRatio / heightRatio are fractions of the *visible* container area,
-                    // not the full bitmap — use visibleBitmapW/H to match what the preview shows.
-                    val halfW = (element.widthRatio  * visibleBitmapW) / 2f
-                    val halfH = (element.heightRatio * visibleBitmapH) / 2f
-
-                    val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                        color       = element.color.toArgb()
-                        strokeWidth = element.strokeWidth
-                        style       = if (element.filled) Paint.Style.FILL else Paint.Style.STROKE
-                        strokeCap   = Paint.Cap.ROUND
-                        strokeJoin  = Paint.Join.ROUND
-                    }
-
-                    canvas.withSave {
-                        translate(centerX, centerY)
-                        rotate(element.rotation)
-                        scale(element.scale, element.scale)
-                        when (element.kind) {
-                            EditorShape.Rect     -> canvas.drawRect(-halfW, -halfH, halfW, halfH, paint)
-                            EditorShape.Circle   -> canvas.drawOval(-halfW, -halfH, halfW, halfH, paint)
-                            EditorShape.Line     -> canvas.drawLine(-halfW, 0f, halfW, 0f, paint)
-                            EditorShape.Triangle -> canvas.drawPath(trianglePath(halfW, halfH), paint)
-                            EditorShape.Star     -> canvas.drawPath(starPath(halfW, halfH), paint)
-                            EditorShape.Arrow    -> canvas.drawPath(arrowPath(halfW, halfH), paint)
-                            EditorShape.Heart    -> canvas.drawPath(heartPath(halfW, halfH), paint)
-                        }
-                    }
+    val filePath = when (destination) {
+        is SaveDestination.File -> {
+            val file = destination.file
+            file.parentFile?.let { parent ->
+                if (!parent.exists() && !parent.mkdirs()) {
+                    throw IOException("Cannot create directory $parent")
                 }
             }
+            FileOutputStream(file).use { resultBitmap.compress(format, quality, it) }
+            file.absolutePath
         }
 
-        // ── Save to storage ──────────────────────────────────────────────────
-        val (extension, mimeType) = when (format) {
-            Bitmap.CompressFormat.PNG -> "png" to "image/png"
-            Bitmap.CompressFormat.JPEG -> "jpg" to "image/jpeg"
-            else -> "webp" to "image/webp"
-        }
-
-        val filePath = when (destination) {
-            is SaveDestination.File -> {
-                val file = destination.file
-                file.parentFile?.let { parent ->
-                    if (!parent.exists() && !parent.mkdirs()) {
-                        throw IOException("Cannot create directory $parent")
-                    }
+        is SaveDestination.Gallery -> {
+            val fileName = "edited_image_${System.currentTimeMillis()}.$extension"
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val relativePath = destination.subFolder
+                    ?.let { "${Environment.DIRECTORY_PICTURES}/$it" }
+                    ?: Environment.DIRECTORY_PICTURES
+                val contentValues = ContentValues().apply {
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                    put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
+                    put(MediaStore.MediaColumns.RELATIVE_PATH, relativePath)
+                    put(MediaStore.MediaColumns.IS_PENDING, 1)
                 }
+                val uri = contentResolver.insert(
+                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                    contentValues,
+                ) ?: throw IOException("MediaStore insert failed — cannot create image entry")
+
+                try {
+                    val stream = contentResolver.openOutputStream(uri)
+                        ?: throw IOException("Cannot open output stream for $uri")
+                    stream.use { resultBitmap.compress(format, quality, it) }
+                    // Make the entry visible to other apps only once fully written.
+                    contentResolver.update(
+                        uri,
+                        ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) },
+                        null,
+                        null,
+                    )
+                } catch (e: Exception) {
+                    // Don't leave an orphaned pending entry behind.
+                    contentResolver.delete(uri, null, null)
+                    throw e
+                }
+                uri.toString()
+            } else {
+                // Direct write to the public directory — needs
+                // WRITE_EXTERNAL_STORAGE held at runtime on API <29.
+                val base = Environment.getExternalStoragePublicDirectory(
+                    Environment.DIRECTORY_PICTURES
+                )
+                val dir = destination.subFolder?.let { File(base, it) } ?: base
+                if (!dir.exists() && !dir.mkdirs()) {
+                    throw IOException("Cannot create directory $dir")
+                }
+                val file = File(dir, fileName)
                 FileOutputStream(file).use { resultBitmap.compress(format, quality, it) }
                 file.absolutePath
             }
-
-            is SaveDestination.Gallery -> {
-                val fileName = "edited_image_${System.currentTimeMillis()}.$extension"
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    val relativePath = destination.subFolder
-                        ?.let { "${Environment.DIRECTORY_PICTURES}/$it" }
-                        ?: Environment.DIRECTORY_PICTURES
-                    val contentValues = ContentValues().apply {
-                        put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
-                        put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
-                        put(MediaStore.MediaColumns.RELATIVE_PATH, relativePath)
-                        put(MediaStore.MediaColumns.IS_PENDING, 1)
-                    }
-                    val uri = contentResolver.insert(
-                        MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                        contentValues,
-                    ) ?: throw IOException("MediaStore insert failed — cannot create image entry")
-
-                    try {
-                        val stream = contentResolver.openOutputStream(uri)
-                            ?: throw IOException("Cannot open output stream for $uri")
-                        stream.use { resultBitmap.compress(format, quality, it) }
-                        // Make the entry visible to other apps only once fully written.
-                        contentResolver.update(
-                            uri,
-                            ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) },
-                            null,
-                            null,
-                        )
-                    } catch (e: Exception) {
-                        // Don't leave an orphaned pending entry behind.
-                        contentResolver.delete(uri, null, null)
-                        throw e
-                    }
-                    uri.toString()
-                } else {
-                    // Direct write to the public directory — needs
-                    // WRITE_EXTERNAL_STORAGE held at runtime on API <29.
-                    val base = Environment.getExternalStoragePublicDirectory(
-                        Environment.DIRECTORY_PICTURES
-                    )
-                    val dir = destination.subFolder?.let { File(base, it) } ?: base
-                    if (!dir.exists() && !dir.mkdirs()) {
-                        throw IOException("Cannot create directory $dir")
-                    }
-                    val file = File(dir, fileName)
-                    FileOutputStream(file).use { resultBitmap.compress(format, quality, it) }
-                    file.absolutePath
-                }
-            }
         }
-
-        resultBitmap.recycle()
-        filePath
     }
+
+    return filePath
 }
 
 // ── Shape path helpers ────────────────────────────────────────────────────────

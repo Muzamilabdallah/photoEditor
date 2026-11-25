@@ -61,7 +61,6 @@ fun PhotoEditorCanvas(
         onFinishDrawing = state::finishDrawing,
         onElementTap = state::selectElement,
         onUpdateElement = state::updateElementTransform,
-        onContainerSizeChanged = state::setContainerSize,
         selectionColor = selectionColor,
         onSelectedBoundsChanged = state::reportSelectedElementBounds,
         onInteractionChanged = state::setInteracting,

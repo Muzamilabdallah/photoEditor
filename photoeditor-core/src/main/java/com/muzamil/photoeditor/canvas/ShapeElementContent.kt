@@ -15,29 +15,26 @@ import com.muzamil.photoeditor.domain.EditElement
 import com.muzamil.photoeditor.domain.EditorShape
 
 /**
- * Renders a [EditElement.Shape] inside a [DraggableElement]. Sizes itself
- * according to the shape's [EditElement.Shape.widthRatio]/[heightRatio] in
- * the parent (which equals the bitmap's pixel dimensions).
+ * Renders a [EditElement.Shape] inside a [DraggableElement]. Its box and
+ * stroke are size ratios (fractions of the image's shorter side), so both
+ * scale by [sizeUnitPx] — the image's shorter side on screen — exactly as the
+ * exporter scales them by the bitmap's shorter side.
  */
 @Composable
 internal fun ShapeElementContent(
     element: EditElement.Shape,
     isSelected: Boolean,
-    parentWidthPx: Int,
-    parentHeightPx: Int,
-    scaleFactor: Float,
+    sizeUnitPx: Float,
     modifier: Modifier = Modifier
 ) {
-    val widthPx = (parentWidthPx * element.widthRatio).coerceAtLeast(1f)
-    val heightPx = (parentHeightPx * element.heightRatio).coerceAtLeast(1f)
+    val widthPx = (element.widthRatio * sizeUnitPx).coerceAtLeast(1f)
+    val heightPx = (element.heightRatio * sizeUnitPx).coerceAtLeast(1f)
 
     val density = LocalDensity.current
     val widthDp = with(density) { widthPx.toDp() }
     val heightDp = with(density) { heightPx.toDp() }
 
-    // strokeWidth is stored in bitmap-px (see EditElement.Shape kdoc); multiply by
-    // scaleFactor so the preview thickness matches what the exporter will draw.
-    val previewStrokeWidth = element.strokeWidth * scaleFactor
+    val previewStrokeWidth = element.strokeWidthRatio * sizeUnitPx
 
     Box(modifier = modifier.size(widthDp, heightDp)) {
         Canvas(modifier = Modifier.size(widthDp, heightDp)) {

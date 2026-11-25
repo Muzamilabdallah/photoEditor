@@ -6,7 +6,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.sp
 import com.muzamil.photoeditor.domain.EditElement
 import com.muzamil.photoeditor.domain.EditorShape
 import com.muzamil.photoeditor.domain.EditorState
@@ -20,26 +19,35 @@ import kotlinx.coroutines.CoroutineScope
  * death. Deliberately excluded: the background bitmap (far too large for
  * saved instance state — the `PhotoEditor` composable persists the image
  * *uri* and re-decodes it instead) and the undo/redo history.
+ *
+ * The first entry is [SAVE_FORMAT_VERSION]. State in any other format — e.g.
+ * saved by 0.1.x, whose text/emoji/shape positions were fractions of the
+ * preview container rather than the bitmap — is dropped on restore (the
+ * editor starts empty) instead of being restored to the wrong place.
  */
 internal fun photoEditorStateSaver(scope: CoroutineScope): Saver<PhotoEditorState, Any> =
     listSaver(
         save = { state ->
             val s = state.editorState
             listOf(
+                SAVE_FORMAT_VERSION,
                 s.selectedElementId,
                 s.currentTool.toSaveable(),
                 s.drawingColor.toArgb(),
-                s.drawingStrokeWidth,
+                s.drawingStrokeWidthRatio,
                 s.textColor.toArgb(),
-                s.textSize.value,
+                s.textSizeRatio,
                 s.shapeTool.selectedShape.name,
                 s.shapeTool.selectedColor.toArgb(),
-                s.shapeTool.strokeWidthPx,
+                s.shapeTool.strokeWidthRatio,
                 s.shapeTool.isFilled,
                 ArrayList(s.elements.map { it.toSaveable() }),
             )
         },
-        restore = { saved ->
+        restore = { all ->
+            // Returning null makes rememberSaveable fall back to a fresh state.
+            if (all.firstOrNull() != SAVE_FORMAT_VERSION) return@listSaver null
+            val saved = all.drop(1)
             @Suppress("UNCHECKED_CAST")
             val elementLists = saved[10] as List<List<Any?>>
             PhotoEditorState(
@@ -49,19 +57,25 @@ internal fun photoEditorStateSaver(scope: CoroutineScope): Saver<PhotoEditorStat
                     selectedElementId = saved[0] as String?,
                     currentTool = toolFromSaveable(saved[1] as String),
                     drawingColor = Color(saved[2] as Int),
-                    drawingStrokeWidth = saved[3] as Float,
+                    drawingStrokeWidthRatio = saved[3] as Float,
                     textColor = Color(saved[4] as Int),
-                    textSize = (saved[5] as Float).sp,
+                    textSizeRatio = saved[5] as Float,
                     shapeTool = ShapeToolState(
                         selectedShape = editorShapeFromSaveable(saved[6] as String),
                         selectedColor = Color(saved[7] as Int),
-                        strokeWidthPx = saved[8] as Float,
+                        strokeWidthRatio = saved[8] as Float,
                         isFilled = saved[9] as Boolean,
                     ),
                 ),
             )
         },
     )
+
+/**
+ * Bump whenever the saved layout or the meaning of a saved value changes.
+ * 2 = 0.2.0: everything relative to the bitmap, sizes as shorter-side ratios.
+ */
+internal const val SAVE_FORMAT_VERSION = 2
 
 private fun EditorTool.toSaveable(): String = when (this) {
     EditorTool.None -> "none"
@@ -88,21 +102,21 @@ private fun editorShapeFromSaveable(saved: String): EditorShape =
 internal fun EditElement.toSaveable(): ArrayList<Any?> = when (this) {
     is EditElement.Text -> arrayListOf(
         "text", id, zIndex, offsetRatioX, offsetRatioY, rotation, scale,
-        text, color.toArgb(), fontSize.value, fontWeight == FontWeight.Bold,
+        text, color.toArgb(), fontSizeRatio, fontWeight == FontWeight.Bold,
     )
 
     is EditElement.Emoji -> arrayListOf(
         "emoji", id, zIndex, offsetRatioX, offsetRatioY, rotation, scale,
-        emoji, size.value,
+        emoji, sizeRatio,
     )
 
     is EditElement.Shape -> arrayListOf(
         "shape", id, zIndex, offsetRatioX, offsetRatioY, rotation, scale,
-        kind.name, widthRatio, heightRatio, color.toArgb(), strokeWidth, filled,
+        kind.name, widthRatio, heightRatio, color.toArgb(), strokeWidthRatio, filled,
     )
 
     is EditElement.Drawing -> arrayListOf(
-        "drawing", id, zIndex, color.toArgb(), strokeWidth,
+        "drawing", id, zIndex, color.toArgb(), strokeWidthRatio,
         FloatArray(points.size * 2).also { arr ->
             points.forEachIndexed { i, p ->
                 arr[i * 2] = p.x
@@ -122,7 +136,7 @@ internal fun editElementFromSaveable(saved: List<Any?>): EditElement = when (sav
         scale = saved[6] as Float,
         text = saved[7] as String,
         color = Color(saved[8] as Int),
-        fontSize = (saved[9] as Float).sp,
+        fontSizeRatio = saved[9] as Float,
         fontWeight = if (saved[10] as Boolean) FontWeight.Bold else FontWeight.Normal,
     )
 
@@ -134,7 +148,7 @@ internal fun editElementFromSaveable(saved: List<Any?>): EditElement = when (sav
         rotation = saved[5] as Float,
         scale = saved[6] as Float,
         emoji = saved[7] as String,
-        size = (saved[8] as Float).sp,
+        sizeRatio = saved[8] as Float,
     )
 
     "shape" -> EditElement.Shape(
@@ -148,7 +162,7 @@ internal fun editElementFromSaveable(saved: List<Any?>): EditElement = when (sav
         widthRatio = saved[8] as Float,
         heightRatio = saved[9] as Float,
         color = Color(saved[10] as Int),
-        strokeWidth = saved[11] as Float,
+        strokeWidthRatio = saved[11] as Float,
         filled = saved[12] as Boolean,
     )
 
@@ -158,7 +172,7 @@ internal fun editElementFromSaveable(saved: List<Any?>): EditElement = when (sav
             id = saved[1] as String,
             zIndex = saved[2] as Int,
             color = Color(saved[3] as Int),
-            strokeWidth = saved[4] as Float,
+            strokeWidthRatio = saved[4] as Float,
             points = List(coords.size / 2) { i -> Offset(coords[i * 2], coords[i * 2 + 1]) },
         )
     }

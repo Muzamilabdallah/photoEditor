@@ -2,8 +2,6 @@ package com.muzamil.photoeditor.state
 
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.unit.IntSize
-import androidx.compose.ui.unit.sp
 import com.muzamil.photoeditor.domain.EditElement
 import com.muzamil.photoeditor.domain.EditorHistoryState
 import com.muzamil.photoeditor.domain.EditorShape
@@ -41,6 +39,13 @@ class PhotoEditorStateTest {
         assertEquals(0.75f, text.offsetRatioY, 0f)
         assertEquals(editorState.textColor, text.color)
         assertTrue(state.canUndo)
+    }
+
+    @Test
+    fun `addText uses the text size default`() {
+        state.updateTextStyle(sizeRatio = 0.15f)
+        state.addText("big")
+        assertEquals(0.15f, (elements.single() as EditElement.Text).fontSizeRatio, 0f)
     }
 
     @Test
@@ -141,13 +146,13 @@ class PhotoEditorStateTest {
 
     @Test
     fun `startDrawing creates a drawing using the current defaults`() {
-        state.updateDrawingStyle(color = Color.Red, strokeWidth = 12f)
+        state.updateDrawingStyle(color = Color.Red, strokeWidthRatio = 0.012f)
         state.startDrawing(Offset(0.1f, 0.2f))
 
         val drawing = elements.single() as EditElement.Drawing
         assertEquals(listOf(Offset(0.1f, 0.2f)), drawing.points)
         assertEquals(Color.Red, drawing.color)
-        assertEquals(12f, drawing.strokeWidth, 0f)
+        assertEquals(0.012f, drawing.strokeWidthRatio, 0f)
     }
 
     @Test
@@ -400,12 +405,12 @@ class PhotoEditorStateTest {
         val first = elements[0].id
         state.selectElement(first)
 
-        state.updateSelectedTextStyle(color = Color.Green, fontSize = 40.sp)
+        state.updateSelectedTextStyle(color = Color.Green, fontSizeRatio = 0.04f)
 
         val styled = elements[0] as EditElement.Text
         val untouched = elements[1] as EditElement.Text
         assertEquals(Color.Green, styled.color)
-        assertEquals(40.sp, styled.fontSize)
+        assertEquals(0.04f, styled.fontSizeRatio, 0f)
         assertEquals(editorState.textColor, untouched.color)
     }
 
@@ -432,14 +437,14 @@ class PhotoEditorStateTest {
         state.addText("t")
         state.selectElement(elements.single().id)
 
-        listOf(30f, 34f, 40f, 52f).forEach { state.updateSelectedTextStyle(fontSize = it.sp) }
+        listOf(0.08f, 0.09f, 0.1f, 0.12f).forEach { state.updateSelectedTextStyle(fontSizeRatio = it) }
         state.commitPendingChanges()
-        assertEquals(52.sp, (elements.single() as EditElement.Text).fontSize)
+        assertEquals(0.12f, (elements.single() as EditElement.Text).fontSizeRatio, 0f)
 
         state.undo()
-        assertEquals(28.sp, (elements.single() as EditElement.Text).fontSize)
+        assertEquals(EditElement.DefaultTextSizeRatio, (elements.single() as EditElement.Text).fontSizeRatio, 0f)
         state.redo()
-        assertEquals(52.sp, (elements.single() as EditElement.Text).fontSize)
+        assertEquals(0.12f, (elements.single() as EditElement.Text).fontSizeRatio, 0f)
     }
 
     @Test
@@ -474,12 +479,12 @@ class PhotoEditorStateTest {
 
     @Test
     fun `updateShapeTool changes defaults for the next shape`() {
-        state.updateShapeTool(color = Color.Blue, strokeWidth = 20f, filled = true)
+        state.updateShapeTool(color = Color.Blue, strokeWidthRatio = 0.02f, filled = true)
         state.addShape(EditorShape.Star)
 
         val shape = elements.single() as EditElement.Shape
         assertEquals(Color.Blue, shape.color)
-        assertEquals(20f, shape.strokeWidth, 0f)
+        assertEquals(0.02f, shape.strokeWidthRatio, 0f)
         assertTrue(shape.filled)
     }
 
@@ -490,18 +495,6 @@ class PhotoEditorStateTest {
 
         val shape = elements.single() as EditElement.Shape
         assertEquals(EditorShape.Heart, shape.kind)
-    }
-
-    // ── Container size ────────────────────────────────────────────────────────
-
-    @Test
-    fun `setContainerSize ignores degenerate sizes`() {
-        state.setContainerSize(IntSize(0, 100))
-        state.setContainerSize(IntSize(100, 0))
-        assertEquals(IntSize.Zero, state.containerSize)
-
-        state.setContainerSize(IntSize(1080, 1920))
-        assertEquals(IntSize(1080, 1920), state.containerSize)
     }
 
     // ── Interaction ───────────────────────────────────────────────────────────

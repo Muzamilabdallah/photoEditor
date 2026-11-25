@@ -22,36 +22,45 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.unit.TextUnit
-import androidx.compose.ui.unit.TextUnitType
 import androidx.compose.ui.unit.dp
 import com.muzamil.photoeditor.ui.theme.LocalPhotoEditorColors
 import com.muzamil.photoeditor.ui.theme.LocalPhotoEditorTypography
 import com.muzamil.photoeditor.ui.theme.PhotoEditorDefaults
 
+/**
+ * Slider "levels" for size ratios. Core stores every size as a fraction of the
+ * image's shorter side (see `EditElement`); the sliders show that ×1000 as a
+ * plain number (text 70 = 7% of the shorter side, stroke 6 = 0.6%), so the
+ * same number looks the same on every photo. No unit is shown on purpose.
+ */
+internal const val LevelsPerRatio = 1000f
+internal fun Float.ratioToLevel(): Float = this * LevelsPerRatio
+internal fun Float.levelToRatio(): Float = this / LevelsPerRatio
+
+/** All sizes here are ratios of the image's shorter side (see `EditElement`). */
 internal sealed class StyleContext {
     data class TextStyle(
         val color: Color,
-        val fontSize: TextUnit,
+        val fontSizeRatio: Float,
         val onColor: (Color) -> Unit,
-        val onFontSize: (TextUnit) -> Unit
+        val onFontSize: (Float) -> Unit
     ) : StyleContext()
 
     data class EmojiStyle(
-        val size: TextUnit,
-        val onSize: (TextUnit) -> Unit
+        val sizeRatio: Float,
+        val onSize: (Float) -> Unit
     ) : StyleContext()
 
     data class DrawingStyle(
         val color: Color,
-        val strokeWidth: Float,
+        val strokeWidthRatio: Float,
         val onColor: (Color) -> Unit,
         val onStroke: (Float) -> Unit
     ) : StyleContext()
 
     data class ShapeStyle(
         val color: Color,
-        val strokeWidth: Float,
+        val strokeWidthRatio: Float,
         val filled: Boolean,
         val onColor: (Color) -> Unit,
         val onStroke: (Float) -> Unit,
@@ -115,19 +124,19 @@ internal fun EditorStylePanel(
                     )
                     LabeledSlider(
                         label = "Size",
-                        value = context.fontSize.value,
-                        range = 12f..96f,
+                        value = context.fontSizeRatio.ratioToLevel(),
+                        range = 20f..200f,
                         onChangeFinished = onSliderReleased,
-                        onChange = { context.onFontSize(TextUnit(it, TextUnitType.Sp)) }
+                        onChange = { context.onFontSize(it.levelToRatio()) }
                     )
                 }
                 is StyleContext.EmojiStyle -> {
                     LabeledSlider(
                         label = "Size",
-                        value = context.size.value,
-                        range = 24f..160f,
+                        value = context.sizeRatio.ratioToLevel(),
+                        range = 40f..400f,
                         onChangeFinished = onSliderReleased,
-                        onChange = { context.onSize(TextUnit(it, TextUnitType.Sp)) }
+                        onChange = { context.onSize(it.levelToRatio()) }
                     )
                 }
                 is StyleContext.DrawingStyle -> {
@@ -138,10 +147,10 @@ internal fun EditorStylePanel(
                     )
                     LabeledSlider(
                         label = "Stroke",
-                        value = context.strokeWidth,
+                        value = context.strokeWidthRatio.ratioToLevel(),
                         range = 1f..50f,
                         onChangeFinished = onSliderReleased,
-                        onChange = context.onStroke
+                        onChange = { context.onStroke(it.levelToRatio()) }
                     )
                 }
                 is StyleContext.ShapeStyle -> {
@@ -152,10 +161,10 @@ internal fun EditorStylePanel(
                     )
                     LabeledSlider(
                         label = "Stroke",
-                        value = context.strokeWidth,
+                        value = context.strokeWidthRatio.ratioToLevel(),
                         range = 1f..50f,
                         onChangeFinished = onSliderReleased,
-                        onChange = context.onStroke
+                        onChange = { context.onStroke(it.levelToRatio()) }
                     )
                     Row(
                         modifier = Modifier.fillMaxWidth(),

@@ -134,7 +134,9 @@ Column {
 
 The tool state types your UI binds to (`ShapeToolState`, `EditorShape`, `EditorColors`) live in core — the built-in `ShapeToolPanel` uses exactly the same ones. `EditorShapePaths` (also core) builds each shape as a `Path` so custom pickers can render matching icons.
 
-**Give the canvas its own space.** Gestures clamp to `PhotoEditorCanvas`'s measured bounds, and the exporter reconstructs element positions from that same size — so the canvas area *is* the editable area. Lay your chrome out beside it (as with `weight(1f)` above) rather than overlaying it in a `Box`: an element dragged under an opaque toolbar drawn on top of the canvas is still inside the canvas, just invisible and impossible to grab again.
+**Give the canvas its own space.** The canvas shows the whole photo (fit, letterboxed) and keeps elements inside it. Lay your chrome out beside it (as with `weight(1f)` above) rather than overlaying it in a `Box`: an element dragged under an opaque toolbar drawn on top of the canvas is still on the photo, just invisible and impossible to grab again.
+
+**Positions and sizes are relative to the photo, not the screen.** Element positions are fractions of the bitmap's width/height, and every size — text, emoji, shape box, stroke width — is a fraction of the bitmap's **shorter side** (`state.updateDrawingStyle(strokeWidthRatio = 0.01f)` is a stroke 1% of the shorter side thick). So an edit looks the same on any screen and in the exported file, and the same value looks the same on every photo. `renderEdits(bitmap, elements)` renders an edit without any UI — e.g. in a `Worker` or a test.
 
 Two snapshot properties on `PhotoEditorState` are worth binding your chrome to:
 
