@@ -10,7 +10,7 @@ plugins {
 group = "com.github.Muzamilabdallah"
 // Keep in lockstep with :photoeditor-core — the two artifacts are released
 // together and ui-default's POM pins core at this exact version.
-version = "0.1.1"
+version = "0.2.0"
 
 android {
     namespace = "com.muzamil.photoeditor.uidefault"

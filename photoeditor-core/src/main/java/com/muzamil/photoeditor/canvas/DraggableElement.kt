@@ -40,9 +40,9 @@ internal fun DraggableElement(
     var childWidth by remember(element.id) { mutableIntStateOf(0) }
     var childHeight by remember(element.id) { mutableIntStateOf(0) }
 
-    // offsetRatioX/Y stores the **center** of the element as a fraction of the parent.
-    // This matches the bitmap-side export path (see ImageExporter) so preview and saved
-    // images agree on where an element is anchored.
+    // offsetRatioX/Y is the element's **centre** as a fraction of the parent,
+    // which EditorCanvas lays out at exactly the image's on-screen rect, so it
+    // is also the fraction of the bitmap the exporter uses.
     val transformableState = rememberTransformableState { scaleChange, panChange, rotationChange ->
         val newRotation = element.rotation + rotationChange
 
@@ -61,7 +61,7 @@ internal fun DraggableElement(
         val visualHalfWidth = (abs(scaledWidth * cos) + abs(scaledHeight * sin)) / 2f
         val visualHalfHeight = (abs(scaledWidth * sin) + abs(scaledHeight * cos)) / 2f
 
-        // Keep the element's center inside the parent by its rotated half-extent.
+        // Keep the element inside the image by its rotated half-extent.
         val minX = visualHalfWidth
         val maxX = parentWidth - visualHalfWidth
         val minY = visualHalfHeight

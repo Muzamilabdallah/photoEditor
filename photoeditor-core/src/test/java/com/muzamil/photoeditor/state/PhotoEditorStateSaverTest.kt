@@ -4,7 +4,6 @@ import androidx.compose.runtime.saveable.SaverScope
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.sp
 import com.muzamil.photoeditor.domain.EditElement
 import com.muzamil.photoeditor.domain.EditorShape
 import com.muzamil.photoeditor.domain.EditorTool
@@ -13,6 +12,7 @@ import kotlinx.coroutines.Dispatchers
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PhotoEditorStateSaverTest {
@@ -32,7 +32,7 @@ class PhotoEditorStateSaverTest {
         val state = PhotoEditorState(scope)
         state.addText("hello", Offset(0.3f, 0.4f))
         state.addEmoji("🎉")
-        state.updateShapeTool(color = Color.Blue, strokeWidth = 14f, filled = true)
+        state.updateShapeTool(color = Color.Blue, strokeWidthRatio = 0.014f, filled = true)
         state.addShape(EditorShape.Star)
         state.startDrawing(Offset(0.1f, 0.1f))
         state.continueDrawing(listOf(Offset(0.2f, 0.25f), Offset(0.3f, 0.35f)))
@@ -47,12 +47,12 @@ class PhotoEditorStateSaverTest {
     fun `tool selection and style defaults survive the round trip`() {
         val state = PhotoEditorState(scope)
         state.selectTool(EditorTool.Shape)
-        state.updateDrawingStyle(color = Color.Red, strokeWidth = 9f)
-        state.updateTextStyle(color = Color.Yellow, size = 32.sp)
+        state.updateDrawingStyle(color = Color.Red, strokeWidthRatio = 0.009f)
+        state.updateTextStyle(color = Color.Yellow, sizeRatio = 0.032f)
         state.updateShapeTool(
             shape = EditorShape.Heart,
             color = Color.Cyan,
-            strokeWidth = 3f,
+            strokeWidthRatio = 0.003f,
             filled = true,
         )
 
@@ -60,12 +60,12 @@ class PhotoEditorStateSaverTest {
 
         assertEquals(EditorTool.Shape, restored.currentTool)
         assertEquals(Color.Red, restored.drawingColor)
-        assertEquals(9f, restored.drawingStrokeWidth, 0f)
+        assertEquals(0.009f, restored.drawingStrokeWidthRatio, 0f)
         assertEquals(Color.Yellow, restored.textColor)
-        assertEquals(32.sp, restored.textSize)
+        assertEquals(0.032f, restored.textSizeRatio, 0f)
         assertEquals(EditorShape.Heart, restored.shapeTool.selectedShape)
         assertEquals(Color.Cyan, restored.shapeTool.selectedColor)
-        assertEquals(3f, restored.shapeTool.strokeWidthPx, 0f)
+        assertEquals(0.003f, restored.shapeTool.strokeWidthRatio, 0f)
         assertEquals(true, restored.shapeTool.isFilled)
     }
 
@@ -85,12 +85,12 @@ class PhotoEditorStateSaverTest {
         state.addText("styled")
         val id = state.editorState.elements.single().id
         state.selectElement(id)
-        state.updateSelectedTextStyle(color = Color.Magenta, fontSize = 44.sp)
+        state.updateSelectedTextStyle(color = Color.Magenta, fontSizeRatio = 0.044f)
         state.updateElementTransform(id, 0.8f, 0.2f, rotation = 30f, scale = 2.5f)
 
         val text = roundTrip(state).editorState.elements.single() as EditElement.Text
         assertEquals(Color.Magenta, text.color)
-        assertEquals(44.sp, text.fontSize)
+        assertEquals(0.044f, text.fontSizeRatio, 0f)
         assertEquals(FontWeight.Bold, text.fontWeight)
         assertEquals(0.8f, text.offsetRatioX, 0f)
         assertEquals(30f, text.rotation, 0f)
@@ -120,6 +120,42 @@ class PhotoEditorStateSaverTest {
         // History is intentionally not persisted.
         assertFalse(restored.canUndo)
         assertFalse(restored.canRedo)
+    }
+
+    @Test
+    fun `saved payload starts with the format version`() {
+        val saved = with(saver) { acceptAll.save(PhotoEditorState(scope)) } as List<*>
+        assertEquals(SAVE_FORMAT_VERSION, saved.first())
+    }
+
+    @Test
+    fun `state saved by 0_1_x is dropped instead of restored to the wrong place`() {
+        // 0.1.x layout: no version; first entry is the selected id (String?),
+        // and text/emoji/shape positions were fractions of the preview
+        // container, which no longer means anything.
+        val legacy = listOf<Any?>(
+            null, "none", Color.Black.hashCode(), 5f, 0, 24f,
+            "Rect", 0, 8f, false,
+            arrayListOf(arrayListOf<Any?>("emoji", "id", 0, 0.5f, 0.5f, 0f, 1f, "😀", 48f)),
+        )
+        assertNull(saver.restore(legacy))
+    }
+
+    @Test
+    fun `state from a newer unknown format is dropped too`() {
+        assertNull(saver.restore(listOf(SAVE_FORMAT_VERSION + 1, null, "none")))
+    }
+
+    @Test
+    fun `restored sizes are ratios, not screen units`() {
+        val state = PhotoEditorState(scope)
+        state.addText("t")
+        state.addEmoji("😀")
+        val restored = roundTrip(state).editorState.elements
+        val text = restored[0] as EditElement.Text
+        val emoji = restored[1] as EditElement.Emoji
+        assertTrue(text.fontSizeRatio in 0f..1f)
+        assertTrue(emoji.sizeRatio in 0f..1f)
     }
 
     @Test

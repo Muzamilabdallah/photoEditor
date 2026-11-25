@@ -51,6 +51,8 @@ import com.muzamil.photoeditor.domain.EditorColors
 import com.muzamil.photoeditor.domain.EditorShape
 import com.muzamil.photoeditor.domain.ShapeToolState
 import com.muzamil.photoeditor.ui.components.ColorSwatchRow
+import com.muzamil.photoeditor.ui.components.levelToRatio
+import com.muzamil.photoeditor.ui.components.ratioToLevel
 import com.muzamil.photoeditor.ui.theme.LocalPhotoEditorColors
 import com.muzamil.photoeditor.ui.theme.LocalPhotoEditorShapes
 import com.muzamil.photoeditor.ui.theme.LocalPhotoEditorTypography
@@ -74,6 +76,7 @@ fun ShapeToolPanel(
     state: ShapeToolState,
     onShapeSelected: (EditorShape) -> Unit,
     onColorSelected: (Color) -> Unit,
+    /** Receives the new outline width as a fraction of the image's shorter side. */
     onStrokeWidthChanged: (Float) -> Unit,
     onFilledChanged: (Boolean) -> Unit,
     onDone: () -> Unit,
@@ -107,7 +110,7 @@ fun ShapeToolPanel(
             )
         }
         StrokeControl(
-            strokeWidthPx = state.strokeWidthPx,
+            strokeWidthRatio = state.strokeWidthRatio,
             onStrokeWidthChanged = onStrokeWidthChanged,
         )
         FilledToggleRow(isFilled = state.isFilled, onFilledChanged = onFilledChanged)
@@ -253,9 +256,12 @@ internal fun EditorShape.label(): String = when (this) {
 
 @Composable
 private fun StrokeControl(
-    strokeWidthPx: Float,
+    strokeWidthRatio: Float,
     onStrokeWidthChanged: (Float) -> Unit,
 ) {
+    // Shown as a whole-number level (ratio × 1000) — relative to the image,
+    // so no unit; see LevelsPerRatio.
+    val level = strokeWidthRatio.ratioToLevel()
     val colors = LocalPhotoEditorColors.current
     Column {
         Row(
@@ -270,15 +276,15 @@ private fun StrokeControl(
                     .padding(horizontal = 10.dp, vertical = 2.dp),
             ) {
                 Text(
-                    text = "${strokeWidthPx.roundToInt()} px",
+                    text = "${level.roundToInt()}",
                     style = LocalPhotoEditorTypography.current.valueLabel,
                     color = colors.onAccentContainer,
                 )
             }
         }
         Slider(
-            value = strokeWidthPx,
-            onValueChange = { onStrokeWidthChanged(it.roundToInt().toFloat()) },
+            value = level,
+            onValueChange = { onStrokeWidthChanged(it.roundToInt().toFloat().levelToRatio()) },
             valueRange = 1f..40f,
             steps = 38,
             colors = SliderDefaults.colors(
@@ -419,7 +425,7 @@ private fun ShapeToolPanelFilledStarPreview() {
             state = ShapeToolState(
                 selectedShape = EditorShape.Star,
                 selectedColor = EditorColors.White,
-                strokeWidthPx = 24f,
+                strokeWidthRatio = 0.024f,
                 isFilled = true,
             ),
             onShapeSelected = {}, onColorSelected = {}, onStrokeWidthChanged = {},
@@ -436,7 +442,7 @@ private fun ShapeToolPanelHeartDarkPreview() {
             state = ShapeToolState(
                 selectedShape = EditorShape.Heart,
                 selectedColor = EditorColors.Yellow,
-                strokeWidthPx = 2f,
+                strokeWidthRatio = 0.002f,
             ),
             onShapeSelected = {}, onColorSelected = {}, onStrokeWidthChanged = {},
             onFilledChanged = {}, onDone = {}, onDismiss = {},

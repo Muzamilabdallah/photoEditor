@@ -4,14 +4,32 @@ import android.graphics.Bitmap
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.TextUnit
-import androidx.compose.ui.unit.sp
 import java.util.UUID
 
+/**
+ * An overlay on the photo.
+ *
+ * ## Coordinate model
+ * Everything is stored relative to the **source bitmap**, never to the screen,
+ * so an edit renders identically at any preview size (rotation, split screen,
+ * process-death restore into another window) and at full resolution on export:
+ *
+ * - **Positions** ([offsetRatioX]/[offsetRatioY], [Drawing.points]) are
+ *   fractions of the bitmap's width and height: `(0, 0)` is its top-left
+ *   corner, `(1, 1)` its bottom-right.
+ * - **Sizes** (font size, emoji size, shape box, stroke widths — every field
+ *   ending in `Ratio` that is not a position) are fractions of the bitmap's
+ *   **shorter side**. Using one length for both axes keeps circles round and
+ *   makes a given value look the same on every photo, whatever its resolution.
+ */
 sealed class EditElement {
     abstract val id: String
     abstract val zIndex: Int
+
+    /** Element centre, as a fraction of the bitmap width. */
     abstract val offsetRatioX: Float
+
+    /** Element centre, as a fraction of the bitmap height. */
     abstract val offsetRatioY: Float
     abstract val rotation: Float
     abstract val scale: Float
@@ -24,7 +42,8 @@ sealed class EditElement {
         override val rotation: Float = 0f,
         override val scale: Float = 1f,
         val color: Color = Color.White,
-        val fontSize: TextUnit = 28.sp,
+        /** Font size as a fraction of the bitmap's shorter side. */
+        val fontSizeRatio: Float = DefaultTextSizeRatio,
         val fontWeight: FontWeight = FontWeight.Bold,
         override val zIndex: Int = 0
     ) : EditElement()
@@ -36,22 +55,18 @@ sealed class EditElement {
         override val offsetRatioY: Float = 0.5f,
         override val rotation: Float = 0f,
         override val scale: Float = 1f,
-        val size: TextUnit = 48.sp,
+        /** Glyph size as a fraction of the bitmap's shorter side. */
+        val sizeRatio: Float = DefaultEmojiSizeRatio,
         override val zIndex: Int = 0
     ) : EditElement()
 
     data class Drawing(
         override val id: String = UUID.randomUUID().toString(),
-        /**
-         * Points stored as ratio [Offset]s where x and y are each in `0f..1f`,
-         * relative to the source bitmap's dimensions. Same convention as
-         * [Text.offsetRatioX]/[Text.offsetRatioY], so drawings survive any
-         * preview-size ↔ bitmap-size conversion.
-         */
+        /** Points as fractions of the bitmap's width (x) and height (y), each `0f..1f`. */
         val points: List<Offset>,
         val color: Color,
-        /** Stroke width in bitmap-space pixels. */
-        val strokeWidth: Float,
+        /** Stroke width as a fraction of the bitmap's shorter side. */
+        val strokeWidthRatio: Float,
         override val zIndex: Int = 0
     ) : EditElement() {
         override val offsetRatioX: Float = 0f
@@ -61,11 +76,10 @@ sealed class EditElement {
     }
 
     /**
-     * A predefined shape (see [EditorShape]). Position is the shape's
-     * center, expressed as ratios of the preview container (like [Text]).
-     * [widthRatio] and [heightRatio] are the shape's bounding-box size as
-     * fractions of the preview **container** (not the bitmap); the exporter
-     * maps them through the visible crop region of the bitmap.
+     * A predefined shape (see [EditorShape]), centred on
+     * [offsetRatioX]/[offsetRatioY]. [widthRatio], [heightRatio] and
+     * [strokeWidthRatio] are fractions of the bitmap's shorter side, so equal
+     * width and height give a square box on any photo.
      */
     data class Shape(
         override val id: String = UUID.randomUUID().toString(),
@@ -74,14 +88,31 @@ sealed class EditElement {
         override val offsetRatioY: Float = 0.5f,
         override val rotation: Float = 0f,
         override val scale: Float = 1f,
-        val widthRatio: Float = 0.2f,
-        val heightRatio: Float = 0.2f,
+        val widthRatio: Float = DefaultShapeSizeRatio,
+        val heightRatio: Float = DefaultShapeSizeRatio,
         val color: Color = EditorColors.Red,
-        /** Stroke width in bitmap-space pixels. Ignored when [filled] is true. */
-        val strokeWidth: Float = 8f,
+        /** Ignored when [filled] is true (except for [EditorShape.Line]). */
+        val strokeWidthRatio: Float = DefaultShapeStrokeRatio,
         val filled: Boolean = false,
         override val zIndex: Int = 0
     ) : EditElement()
+
+    companion object {
+        /** Default text size: 7% of the shorter side. */
+        const val DefaultTextSizeRatio = 0.07f
+
+        /** Default emoji size: 12% of the shorter side. */
+        const val DefaultEmojiSizeRatio = 0.12f
+
+        /** Default freehand stroke: 0.6% of the shorter side. */
+        const val DefaultDrawingStrokeRatio = 0.006f
+
+        /** Default shape outline: 0.8% of the shorter side. */
+        const val DefaultShapeStrokeRatio = 0.008f
+
+        /** Default shape box: a quarter of the shorter side, square. */
+        const val DefaultShapeSizeRatio = 0.25f
+    }
 }
 
 /** The shape primitives the editor can place. */
@@ -93,9 +124,11 @@ data class EditorState(
     val selectedElementId: String? = null,
     val currentTool: EditorTool = EditorTool.None,
     val drawingColor: Color = Color.Black,
-    val drawingStrokeWidth: Float = 5f,
+    /** Stroke width for the next freehand stroke, as a fraction of the bitmap's shorter side. */
+    val drawingStrokeWidthRatio: Float = EditElement.DefaultDrawingStrokeRatio,
     val textColor: Color = Color.Black,
-    val textSize: TextUnit = 24.sp,
+    /** Font size for the next text, as a fraction of the bitmap's shorter side. */
+    val textSizeRatio: Float = EditElement.DefaultTextSizeRatio,
     /** The Shape tool's pending style: what the next added shape looks like. */
     val shapeTool: ShapeToolState = ShapeToolState(),
     val isLoading: Boolean = false,
@@ -113,3 +146,6 @@ sealed class EditorTool {
      */
     data object Shape : EditorTool()
 }
+
+/** The length all element sizes are relative to: the shorter side, in the same units as [width]/[height]. */
+internal fun sizeUnit(width: Float, height: Float): Float = minOf(width, height)

@@ -88,11 +88,11 @@ Column {
     MyOwnShapePanel(                       // your composable, your design
         selectedShape = shapeTool.selectedShape,
         selectedColor = shapeTool.selectedColor,
-        strokeWidth = shapeTool.strokeWidthPx,
+        strokeWidthRatio = shapeTool.strokeWidthRatio, // fraction of the photo's shorter side
         isFilled = shapeTool.isFilled,
         onShapeSelected = { state.updateShapeTool(shape = it) },
         onColorSelected = { state.updateShapeTool(color = it) },
-        onStrokeChanged = { state.updateShapeTool(strokeWidth = it) },
+        onStrokeChanged = { state.updateShapeTool(strokeWidthRatio = it) },
         onFilledChanged = { state.updateShapeTool(filled = it) },
         onDone = { state.addShape() },     // places shapeTool.selectedShape
     )

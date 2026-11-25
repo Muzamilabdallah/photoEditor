@@ -13,7 +13,10 @@ import androidx.compose.ui.graphics.Color
 data class ShapeToolState(
     val selectedShape: EditorShape = EditorShape.Rect,
     val selectedColor: Color = EditorColors.Red,
-    /** Stroke width in bitmap-space pixels. Ignored when [isFilled] is true. */
-    val strokeWidthPx: Float = 8f,
+    /**
+     * Outline width as a fraction of the bitmap's shorter side (see
+     * [EditElement]). Ignored when [isFilled] is true.
+     */
+    val strokeWidthRatio: Float = EditElement.DefaultShapeStrokeRatio,
     val isFilled: Boolean = false,
 )

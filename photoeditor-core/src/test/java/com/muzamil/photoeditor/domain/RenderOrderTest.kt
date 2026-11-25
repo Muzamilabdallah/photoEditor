@@ -9,7 +9,7 @@ class RenderOrderTest {
 
     private fun text(id: String, z: Int) = EditElement.Text(id = id, text = id, zIndex = z)
     private fun stroke(id: String, z: Int) = EditElement.Drawing(
-        id = id, points = listOf(Offset(0.5f, 0.5f)), color = Color.Red, strokeWidth = 4f, zIndex = z,
+        id = id, points = listOf(Offset(0.5f, 0.5f)), color = Color.Red, strokeWidthRatio = 0.004f, zIndex = z,
     )
 
     @Test

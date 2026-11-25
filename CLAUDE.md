@@ -21,7 +21,7 @@ All commands use the Gradle wrapper at the repo root. (If `java` isn't on PATH, 
 - Build everything: `./gradlew :photoeditor-core:assembleDebug :photoeditor-ui-default:assembleDebug :app:assembleDebug`
 - Install demo on device/emulator: `./gradlew :app:installDebug`
 - Unit tests (JVM): `./gradlew :photoeditor-core:testDebugUnitTest` (the real test suite; ui-default and app have none of substance)
-- Run a single unit test class: `./gradlew :photoeditor-core:testDebugUnitTest --tests "com.muzamil.photoeditor.geometry.CropGeometryTest"` (append `.methodName` for one test)
+- Run a single unit test class: `./gradlew :photoeditor-core:testDebugUnitTest --tests "com.muzamil.photoeditor.geometry.ImageGeometryTest"` (append `.methodName` for one test)
 - Lint: `./gradlew :photoeditor-core:lintDebug :photoeditor-ui-default:lintDebug :app:lintDebug`
 - Clean: `./gradlew clean`
 
@@ -41,23 +41,24 @@ State is owned by `PhotoEditorState` (core, `state/PhotoEditorState.kt`), a plai
 
 ### Shape tool state
 
-`ShapeToolState` (core, `domain/ShapeToolState.kt`): `selectedShape`/`selectedColor`/`strokeWidthPx`/`isFilled` — the pending style for the next shape, held in `EditorState.shapeTool` and mutated via `PhotoEditorState.updateShapeTool(...)`. `EditorTool.Shape` is a plain `data object` marker; the selected shape lives ONLY in `shapeTool.selectedShape` (single source of truth shared by built-in and custom UIs). `state.addShape()` (no args) places the tool's selected shape. `EditorShape` enum: Rect, Circle, Line, Triangle, Star, Heart, Arrow. `EditorColors` (core) is the 8-color shared palette.
+`ShapeToolState` (core, `domain/ShapeToolState.kt`): `selectedShape`/`selectedColor`/`strokeWidthRatio`/`isFilled` — the pending style for the next shape, held in `EditorState.shapeTool` and mutated via `PhotoEditorState.updateShapeTool(...)`. `EditorTool.Shape` is a plain `data object` marker; the selected shape lives ONLY in `shapeTool.selectedShape` (single source of truth shared by built-in and custom UIs). `state.addShape()` (no args) places the tool's selected shape. `EditorShape` enum: Rect, Circle, Line, Triangle, Star, Heart, Arrow. `EditorColors` (core) is the 8-color shared palette.
 
 ### Element model (core, `domain/EditElement.kt`)
 
-`EditElement` is sealed: `Text`, `Emoji`, `Drawing`, `Shape`. Coordinates are ratios in `0f..1f`, but **not all in the same space** (known issue; unifying on bitmap space is planned for 0.2.0):
+`EditElement` is sealed: `Text`, `Emoji`, `Drawing`, `Shape`. **Everything is relative to the source bitmap, never the screen** (0.2.0+; the class KDoc is the reference):
 
-- `Drawing.points` — each `Offset` is `(x, y)` as a fraction of the **source bitmap** (mapped via `CropGeometry`).
-- `Text`/`Emoji`/`Shape` — `offsetRatioX`/`offsetRatioY` (the element's center) as a fraction of the **preview container**.
-- `Shape.widthRatio`/`heightRatio` — bounding box as a fraction of the **preview container**.
+- **Positions** — `offsetRatioX`/`offsetRatioY` (element centre) and `Drawing.points` are fractions of the bitmap's width/height, `0f..1f`.
+- **Sizes** — every other `…Ratio` field (`Text.fontSizeRatio`, `Emoji.sizeRatio`, `Shape.widthRatio`/`heightRatio`, `strokeWidthRatio` on `Drawing`/`Shape`, and the `EditorState`/`ShapeToolState` defaults) is a fraction of the bitmap's **shorter side** (`sizeUnit()` in `EditElement.kt`). One unit for both axes keeps circles round; relative to the photo means a value looks the same on any resolution.
 
-The exporter reconciles the two spaces using the live `containerSize` (see `ImageExporter`'s header comment). Stroke widths for `Drawing` and `Shape` are stored in **bitmap-space pixels** (not ratios); text/emoji sizes are in `sp`.
+Never store anything in sp, dp, container pixels or bitmap pixels. The built-in sliders show ratios ×1000 as unitless "levels" (`LevelsPerRatio` in ui-default's `EditorStylePanel.kt`).
+
+`PhotoEditorStateSaver` writes `SAVE_FORMAT_VERSION` first; restore returns null (fresh editor) for any other version. **Bump it whenever a saved field's layout or meaning changes.**
 
 ### Rendering paths (two places, must stay in sync)
 
-1. **On-screen preview** — core `canvas/EditorCanvas.kt` does all gesture handling and ratio↔pixel math. Image displayed with `ContentScale.Crop`; `CropGeometry` is the single source of truth for the screen↔ratio mapping (do **not** use the `minOf`-based `scaleFactor` for position math; it only scales stroke widths and text/emoji sizes). Every element — drawings included — is painted in one loop in `inRenderOrder()` (`domain/RenderOrder.kt`, sorted by `zIndex`), the same order the exporter uses; each `Drawing` is its own non-interactive full-size `Canvas` layer, and a separate transparent gesture layer underneath handles freehand input and empty-canvas taps. New elements get `nextZIndex()` (max + 1), never `elements.size`. `DraggableElement` does rotation-compensated pan math. `Shape` renders via `ShapeElementContent.kt`, which draws paths from the public `EditorShapePaths` (also used by ui-default's shape chips and available to custom UIs).
+1. **On-screen preview** — core `canvas/EditorCanvas.kt` does all gesture handling. The image is shown whole (Fit, letterboxed); `geometry/ImageGeometry` computes its on-screen rect, and the image, the drawing gesture layer and every element are laid out in one box of exactly that rect — so inside it a bitmap ratio is just a fraction of the box, and screen sizes are `ratio × ImageGeometry.sizeUnitPx`. Text/emoji render at exact pixel sizes with `fontScale` pinned to 1 (`TextElementContent.kt`). Elements clamp to the image; `selectedElementBounds` is translated back to container pixels. Every element — drawings included — is painted in one loop in `inRenderOrder()` (`domain/RenderOrder.kt`, sorted by `zIndex`), the same order the exporter uses; each `Drawing` is its own non-interactive full-size `Canvas` layer, and a separate transparent gesture layer underneath handles freehand input and empty-canvas taps. New elements get `nextZIndex()` (max + 1), never `elements.size`. `DraggableElement` does rotation-compensated pan math. `Shape` renders via `ShapeElementContent.kt`, which draws paths from the public `EditorShapePaths` (also used by ui-default's shape chips and available to custom UIs).
 
-2. **Export** — `Context.saveEditedImage` in core `export/ImageExporter.kt`: re-draws all elements onto a copy of the bitmap with `android.graphics.Canvas`, sorted by `zIndex`, then writes via MediaStore (API 29+) or legacy public dir (<29). Its shape path builders mirror `EditorShapePaths` geometries around the origin.
+2. **Export** — public pure `renderEdits(bitmap, elements)` in core `export/ImageExporter.kt` re-draws all elements onto an ARGB copy with `android.graphics.Canvas` (`ratio × bitmap size`, sizes `× shorter side`; no screen input at all), in `inRenderOrder()`. `Context.saveEditedImage` calls it, then writes via MediaStore (API 29+) or legacy public dir (<29). Its shape path builders mirror `EditorShapePaths` geometries around the origin.
 
 **When adding or modifying an element type or its transform, update both rendering paths**, plus `PhotoEditorState.updateElementTransform` and the element's branch in `state/PhotoEditorStateSaver.kt`. When adding an `EditorShape` entry: `EditorShapePaths` (preview + chips) and `ImageExporter` (export) both need it; the panel grid picks it up automatically.
 
@@ -71,7 +72,7 @@ The exporter reconciles the two spaces using the live `containerSize` (see `Imag
 - `canvas/` — `PhotoEditorCanvas.kt` (public surface), `EditorCanvas.kt`, `DraggableElement.kt`, `TextElementContent.kt` (uses `BasicText`, NOT material3), `ShapeElementContent.kt` (internal), `EditorShapePaths.kt` (public path builder).
 - `image/BitmapDecoding.kt` — public `decodeEditableBitmap`: software allocation (hardware bitmaps crash the exporter's pixel copy), ≤4096px downsampling.
 - `export/` — `ImageExporter.kt`, `DrawingPathBuilder.kt` (bezier smoothing shared by preview + export), `SaveDestination.kt` (public sealed: `Gallery(subFolder)` / `File(file)`).
-- `geometry/CropGeometry.kt` — ContentScale.Crop screen↔ratio transform (internal, unit-tested).
+- `geometry/ImageGeometry.kt` — Fit image rect, screen↔ratio mapping and on-screen size unit (internal, unit-tested).
 - `history/HistoryManager.kt` — undo/redo deque (internal).
 - `state/` — `PhotoEditorState.kt` (public holder + `rememberPhotoEditorState()`), `PhotoEditorStateSaver.kt` (internal).
 - Tests live here: `src/test/.../{geometry,history,state}/`.
@@ -79,7 +80,7 @@ The exporter reconciles the two spaces using the live `containerSize` (see `Imag
 ### `:photoeditor-ui-default` layout (`src/main/java/com/muzamil/photoeditor/ui/`)
 
 - `PhotoEditor.kt` — public entry: theme + host; optional `colors`/`typography` token overrides, `onClose` (null hides the close button), `emojis`, `swatchColors`.
-- `PhotoEditorScreen.kt` — the layout (a plain `Column`, no Material `Scaffold`), panel orchestration, empty state; takes `canvasContent` slot. `internal`. **The bars take layout space rather than overlaying the canvas**: top bar → `weight(1f)` canvas band → bottom toolbar, so the band is exactly the reachable editing area and nothing can be drawn or parked behind the chrome. Keep that inset **constant** — element offsets are fractions of the measured container (see `ImageExporter`'s header comment), so a container that resized when a sheet opened would shift every element. That's also why the chrome fades via `graphicsLayer { alpha }` while `isInteracting`, never via `AnimatedVisibility`. Tool sheets (`ToolSheets`) float over the bottom of the band with no dismiss scrim — the canvas stays live underneath, and they close via their own header, Shape's Done, picking an emoji, or switching tabs.
+- `PhotoEditorScreen.kt` — the layout (a plain `Column`, no Material `Scaffold`), panel orchestration, empty state; takes `canvasContent` slot. `internal`. **The bars take layout space rather than overlaying the canvas**: top bar → `weight(1f)` canvas band → bottom toolbar, so the band is exactly the reachable editing area and nothing can be drawn or parked behind the chrome. Keep that inset constant anyway: elements are stored in bitmap space so nothing would drift, but a band that resized when a sheet opened would rescale the photo under the user's finger. The chrome fades via `graphicsLayer { alpha }` while `isInteracting`, never via `AnimatedVisibility`, for the same reason. Tool sheets (`ToolSheets`) float over the bottom of the band with no dismiss scrim — the canvas stays live underneath, and they close via their own header, Shape's Done, picking an emoji, or switching tabs.
 - `EditorHost.kt` — `EditorHostContent` adapter (internal): state holder → screen params + canvas slot.
 - `shapetool/ShapeToolPanel.kt` — **public** stateless Shape panel (header, 4-column shape grid, color swatches, stroke slider + live px pill, fill toggle) + `@Preview`s (light/dark/selection states). Binds to core's `ShapeToolState` via callbacks only.
 - `emojitool/EmojiToolPanel.kt` — **public** stateless Emoji panel: grid of tappable strings, `emojis: List<String> = PhotoEditorDefaults.emojis` (any string works — text-sticker shortcut; core is list-agnostic).
