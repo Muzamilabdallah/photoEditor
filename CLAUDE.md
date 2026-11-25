@@ -63,7 +63,7 @@ This invariant lets the same coordinates render correctly at any Compose canvas 
 
 ### History (undo/redo)
 
-`history/HistoryManager` (core): snapshots of `List<EditElement>` in two deques, bounded at 50. Transform updates during a drag do **not** push to history — only the terminal action does. History does not track background bitmap or style defaults.
+`history/HistoryManager` (core): snapshots of `List<EditElement>` in two deques, bounded at 50. Per-frame transforms and slider moves do **not** push history; `commitIfChanged()` pushes once, only when elements differ from `HistoryManager.current`. It runs at gesture end (`setInteracting(false)`), on discrete edits (swatch tap, fill toggle, text content), on selection change, before every new action, and at the start of `undo`/`redo` — so un-committed edits are never lost. Continuous controls should call the public `commitPendingChanges()` from `onValueChangeFinished`. History does not track background bitmap or style defaults.
 
 ### `:photoeditor-core` layout (`src/main/java/com/muzamil/photoeditor/`)
 

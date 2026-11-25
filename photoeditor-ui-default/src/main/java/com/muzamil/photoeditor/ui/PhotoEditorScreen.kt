@@ -100,6 +100,7 @@ internal fun PhotoEditorScreen(
     onUpdateSelectedEmojiSize: (TextUnit) -> Unit,
     onUpdateSelectedDrawingStyle: (Color?, Float?) -> Unit,
     onUpdateSelectedShapeStyle: (Color?, Float?, Boolean?) -> Unit,
+    onCommitPendingChanges: () -> Unit,
     modifier: Modifier = Modifier,
     // The editing surface, injected by the host — core's PhotoEditorCanvas
     // wires its own gestures into the state holder.
@@ -189,6 +190,7 @@ internal fun PhotoEditorScreen(
                 ToolSheets(
                     showStylePanel = showStylePanel,
                     styleContext = styleContext,
+                    onSliderReleased = onCommitPendingChanges,
                     // Selected elements deselect by tapping the canvas and act
                     // through the selection pill — no close header for them.
                     styleHasHeader = !selectionIsStyleable,
@@ -310,6 +312,7 @@ internal fun PhotoEditorScreen(
 private fun BoxScope.ToolSheets(
     showStylePanel: Boolean,
     styleContext: StyleContext?,
+    onSliderReleased: () -> Unit,
     styleHasHeader: Boolean,
     showShapePanel: Boolean,
     shapeTool: ShapeToolState,
@@ -339,6 +342,7 @@ private fun BoxScope.ToolSheets(
                 } else null,
                 modifier = Modifier.swallowTaps(),
                 swatchColors = swatchColors,
+                onSliderReleased = onSliderReleased,
             )
         }
     }

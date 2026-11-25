@@ -139,7 +139,10 @@ class PhotoEditorState internal constructor(
     }
 
     internal fun setInteracting(interacting: Boolean) {
+        val ended = isInteracting && !interacting
         isInteracting = interacting
+        // A drag / pinch / rotate is one undo step, committed when it ends.
+        if (ended) commitIfChanged()
     }
 
     // ── Text ──────────────────────────────────────────────────────────────────
@@ -166,6 +169,7 @@ class PhotoEditorState internal constructor(
         updateElement(elementId) { el ->
             if (el is EditElement.Text) el.copy(text = newText) else el
         }
+        commitIfChanged()
     }
 
     fun updateTextStyle(color: Color? = null, size: TextUnit? = null) {
@@ -185,6 +189,9 @@ class PhotoEditorState internal constructor(
                 fontSize = fontSize ?: el.fontSize,
             ) else el
         }
+        // Colour taps are discrete; size comes from a slider and is committed
+        // by commitPendingChanges() (or lazily, see commitIfChanged).
+        if (color != null) commitIfChanged()
     }
 
     // ── Emoji ─────────────────────────────────────────────────────────────────
@@ -266,11 +273,13 @@ class PhotoEditorState internal constructor(
                 filled = filled ?: el.filled,
             ) else el
         }
+        if (color != null || filled != null) commitIfChanged()
     }
 
     // ── Drawing ───────────────────────────────────────────────────────────────
 
     fun startDrawing(startPoint: Offset) {
+        commitIfChanged()
         val s = editorState
         update {
             it.copy(
@@ -298,7 +307,7 @@ class PhotoEditorState internal constructor(
     }
 
     fun finishDrawing() {
-        pushToHistory()
+        commitIfChanged()
     }
 
     fun updateDrawingStyle(color: Color? = null, strokeWidth: Float? = null) {
@@ -318,10 +327,18 @@ class PhotoEditorState internal constructor(
                 strokeWidth = strokeWidth ?: el.strokeWidth,
             ) else el
         }
+        if (color != null) commitIfChanged()
     }
 
     // ── Transform (drag / pinch / rotate) ────────────────────────────────────
 
+    /**
+     * Moves/rotates/scales an element. Called on every gesture frame, so it
+     * does not push history itself: the gesture is committed as one undo step
+     * when it ends (the canvas reports that via [isInteracting]). Callers
+     * driving transforms programmatically should call [commitPendingChanges]
+     * afterwards.
+     */
     fun updateElementTransform(
         id: String,
         offsetRatioX: Float,
@@ -360,6 +377,7 @@ class PhotoEditorState internal constructor(
     // ── Selection ─────────────────────────────────────────────────────────────
 
     fun selectElement(elementId: String) {
+        commitIfChanged()
         if (editorState.selectedElementId != elementId.ifEmpty { null }) {
             // Stale bounds belong to the previous selection; the canvas
             // reports fresh ones on the next frame.
@@ -369,6 +387,7 @@ class PhotoEditorState internal constructor(
     }
 
     fun deselectElement() {
+        commitIfChanged()
         selectedElementBounds = null
         update { it.copy(selectedElementId = null) }
     }
@@ -423,6 +442,7 @@ class PhotoEditorState internal constructor(
     // ── Delete ────────────────────────────────────────────────────────────────
 
     fun deleteElement(elementId: String) {
+        commitIfChanged()
         if (editorState.selectedElementId == elementId) selectedElementBounds = null
         update {
             it.copy(
@@ -441,6 +461,7 @@ class PhotoEditorState internal constructor(
     // ── Clear All ─────────────────────────────────────────────────────────────
 
     fun clearAll() {
+        commitIfChanged()
         selectedElementBounds = null
         update { it.copy(elements = emptyList(), selectedElementId = null) }
         pushToHistory()
@@ -448,7 +469,18 @@ class PhotoEditorState internal constructor(
 
     // ── Undo / Redo ───────────────────────────────────────────────────────────
 
+    /**
+     * Commits any edits made since the last undo step — slider drags, or
+     * transforms applied outside a canvas gesture — as one undo step. Call it
+     * when a continuous control settles, e.g. from `Slider.onValueChangeFinished`.
+     * No-op when nothing changed.
+     */
+    fun commitPendingChanges() = commitIfChanged()
+
     fun undo() {
+        // Un-committed edits become their own step first, so undo reverts
+        // exactly those instead of silently discarding them.
+        commitIfChanged()
         historyManager.undo()?.let { elements ->
             selectedElementBounds = null
             update { it.copy(elements = elements, selectedElementId = null) }
@@ -457,6 +489,9 @@ class PhotoEditorState internal constructor(
     }
 
     fun redo() {
+        // A pending edit is new work: committing it clears the redo stack
+        // (standard behaviour) rather than letting redo overwrite it.
+        commitIfChanged()
         historyManager.redo()?.let { elements ->
             selectedElementBounds = null
             update { it.copy(elements = elements, selectedElementId = null) }
@@ -519,6 +554,7 @@ class PhotoEditorState internal constructor(
     // ── Private helpers ───────────────────────────────────────────────────────
 
     private fun addElement(element: EditElement) {
+        commitIfChanged()
         update { it.copy(elements = it.elements + element) }
         pushToHistory()
     }
@@ -527,6 +563,11 @@ class PhotoEditorState internal constructor(
         update { s ->
             s.copy(elements = s.elements.map { if (it.id == id) transform(it) else it })
         }
+    }
+
+    /** Pushes a history entry only if the elements differ from the last snapshot. */
+    private fun commitIfChanged() {
+        if (editorState.elements != historyManager.current) pushToHistory()
     }
 
     private fun pushToHistory() {

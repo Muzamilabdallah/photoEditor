@@ -201,15 +201,96 @@ class PhotoEditorStateTest {
         assertEquals(2f, emoji.scale, 0f)
     }
 
+    /** Simulates a canvas drag: gesture start, per-frame transforms, gesture end. */
+    private fun drag(id: String, vararg frames: Pair<Float, Float>) {
+        state.setInteracting(true)
+        frames.forEach { (x, y) -> state.updateElementTransform(id, x, y, 0f, 1f) }
+        state.setInteracting(false)
+    }
+
     @Test
-    fun `transform updates do not create history entries`() {
+    fun `per-frame transforms do not push history until the gesture ends`() {
         state.addText("t")
         val id = elements.single().id
+
+        state.setInteracting(true)
+        state.updateElementTransform(id, 0.6f, 0.6f, 0f, 1f)
+        state.updateElementTransform(id, 0.7f, 0.7f, 0f, 1f)
+        assertFalse(state.canRedo)
+
+        state.setInteracting(false)
+        state.undo() // reverts the drag only
+        assertEquals(0.5f, elements.single().offsetRatioX, 0f)
+        state.undo() // then the add
+        assertTrue(elements.isEmpty())
+    }
+
+    @Test
+    fun `a drag is exactly one undo step`() {
+        state.addText("t")
+        val id = elements.single().id
+        drag(id, 0.6f to 0.6f, 0.7f to 0.7f, 0.9f to 0.1f)
+
+        state.undo()
+        val text = elements.single()
+        assertEquals(0.5f, text.offsetRatioX, 0f)
+        assertEquals(0.5f, text.offsetRatioY, 0f)
+    }
+
+    @Test
+    fun `redo restores the moved position`() {
+        state.addText("t")
+        val id = elements.single().id
+        drag(id, 0.9f to 0.1f)
+
+        state.undo()
+        state.undo()
+        assertTrue(elements.isEmpty())
+
+        state.redo()
+        assertEquals(0.5f, elements.single().offsetRatioX, 0f)
+        state.redo()
+        assertEquals(0.9f, elements.single().offsetRatioX, 0f)
+        assertEquals(0.1f, elements.single().offsetRatioY, 0f)
+    }
+
+    @Test
+    fun `a gesture that changes nothing adds no history entry`() {
+        state.addText("t")
+        state.setInteracting(true)
+        state.setInteracting(false)
+        // Repeated "not interacting" reports (one per element) are harmless.
+        state.setInteracting(false)
+
+        state.undo()
+        assertTrue(elements.isEmpty())
+        assertFalse(state.canUndo)
+    }
+
+    @Test
+    fun `uncommitted transforms become their own step on undo`() {
+        state.addText("t")
+        val id = elements.single().id
+        // Programmatic transform outside any gesture, never explicitly committed.
         state.updateElementTransform(id, 0.9f, 0.9f, 0f, 1f)
 
         state.undo()
-        // Undo reverts the *add*, not the transform.
+        assertEquals(0.5f, elements.single().offsetRatioX, 0f)
+        state.redo()
+        assertEquals(0.9f, elements.single().offsetRatioX, 0f)
+    }
+
+    @Test
+    fun `finishDrawing then gesture end is one undo step`() {
+        state.setInteracting(true)
+        state.startDrawing(Offset(0.1f, 0.1f))
+        state.continueDrawing(listOf(Offset(0.2f, 0.2f)))
+        state.finishDrawing()
+        state.setInteracting(false)
+
+        state.undo()
         assertTrue(elements.isEmpty())
+        assertFalse(state.canUndo)
     }
 
     // ── Selection & tools ─────────────────────────────────────────────────────
@@ -308,6 +389,69 @@ class PhotoEditorStateTest {
         assertEquals(Color.Green, styled.color)
         assertEquals(40.sp, styled.fontSize)
         assertEquals(editorState.textColor, untouched.color)
+    }
+
+    @Test
+    fun `style change is undoable`() {
+        state.addShape(EditorShape.Rect)
+        val original = elements.single() as EditElement.Shape
+        state.selectElement(original.id)
+
+        state.updateSelectedShapeStyle(color = Color.Blue)
+        state.updateSelectedShapeStyle(filled = true)
+
+        state.undo()
+        val afterOne = elements.single() as EditElement.Shape
+        assertEquals(Color.Blue, afterOne.color)
+        assertFalse(afterOne.filled)
+
+        state.undo()
+        assertEquals(original.color, (elements.single() as EditElement.Shape).color)
+    }
+
+    @Test
+    fun `a slider drag committed on release is one undo step`() {
+        state.addText("t")
+        state.selectElement(elements.single().id)
+
+        listOf(30f, 34f, 40f, 52f).forEach { state.updateSelectedTextStyle(fontSize = it.sp) }
+        state.commitPendingChanges()
+        assertEquals(52.sp, (elements.single() as EditElement.Text).fontSize)
+
+        state.undo()
+        assertEquals(28.sp, (elements.single() as EditElement.Text).fontSize)
+        state.redo()
+        assertEquals(52.sp, (elements.single() as EditElement.Text).fontSize)
+    }
+
+    @Test
+    fun `editing text content is undoable`() {
+        state.addText("before")
+        val id = elements.single().id
+        state.updateTextContent(id, "after")
+
+        state.undo()
+        assertEquals("before", (elements.single() as EditElement.Text).text)
+    }
+
+    @Test
+    fun `commitPendingChanges with nothing pending is a no-op`() {
+        state.addText("t")
+        state.commitPendingChanges()
+        state.undo()
+        assertTrue(elements.isEmpty())
+    }
+
+    @Test
+    fun `pending edits are committed separately before the next action`() {
+        state.addText("t")
+        val id = elements.single().id
+        state.updateElementTransform(id, 0.9f, 0.9f, 0f, 1f)
+        state.addEmoji("😀")
+
+        state.undo() // removes the emoji only
+        assertEquals(1, elements.size)
+        assertEquals(0.9f, elements.single().offsetRatioX, 0f)
     }
 
     @Test
