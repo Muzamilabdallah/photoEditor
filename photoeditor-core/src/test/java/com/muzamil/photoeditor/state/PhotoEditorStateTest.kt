@@ -54,6 +54,24 @@ class PhotoEditorStateTest {
     }
 
     @Test
+    fun `new elements never reuse a zIndex after a delete`() {
+        state.addText("a")
+        state.addText("b")
+        state.addText("c")
+        state.deleteElement(elements[1].id)
+
+        state.startDrawing(Offset(0.5f, 0.5f))
+        state.finishDrawing()
+        state.addEmoji("😀")
+        state.duplicateElement(elements[0].id)
+
+        val zs = elements.map { it.zIndex }
+        assertEquals(zs.distinct(), zs)
+        // Each new element lands on top of everything before it.
+        assertEquals(zs.sorted(), zs)
+    }
+
+    @Test
     fun `deleteElement removes the element and its selection`() {
         state.addEmoji("😀")
         val id = elements.single().id
