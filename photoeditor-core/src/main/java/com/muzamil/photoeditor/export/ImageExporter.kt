@@ -7,6 +7,9 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.Typeface
+import android.text.Layout
+import android.text.StaticLayout
+import android.text.TextPaint
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
@@ -131,20 +134,22 @@ suspend fun Context.saveEditedImage(
                     val centerX = element.offsetRatioX.toBitmapX()
                     val centerY = element.offsetRatioY.toBitmapY()
 
-                    val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    val paint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
                         textSize = spToBitmapPx(element.size.value)
                     }
-                    val emojiW  = paint.measureText(element.emoji)
-                    val fm      = paint.fontMetrics
-                    val emojiH  = fm.bottom - fm.top
+                    // Lay the glyph out the way Compose's BasicText does, so its
+                    // box (and therefore its centre) matches the preview: no font
+                    // padding, and line height taken from the fallback emoji font
+                    // rather than the default font's metrics.
+                    val layout = emojiLayout(element.emoji, paint)
 
                     canvas.withSave {
                         translate(centerX, centerY)
                         rotate(element.rotation)
                         scale(element.scale, element.scale)
-                        // Centre the glyph on (0,0) in local (post-scale) space.
-                        translate(-emojiW / 2f, -emojiH / 2f)
-                        drawText(element.emoji, 0f, -fm.top, paint)
+                        // Centre the laid-out line box on (0,0) in local space.
+                        translate(-layout.width / 2f, -layout.height / 2f)
+                        layout.draw(this)
                     }
                 }
 
@@ -320,4 +325,22 @@ private fun heartPath(halfW: Float, halfH: Float) = Path().apply {
     cubicTo(-halfW,        -1.2f * halfH,  -1.2f * halfW,  0.1f * halfH,  0f, halfH)
     cubicTo( 1.2f * halfW,  0.1f * halfH,   halfW,         -1.2f * halfH, 0f, -halfH * 0.5f)
     close()
+}
+
+/**
+ * A single-line layout of [text], sized to its own width, with the same line
+ * metrics Compose's `BasicText` uses: no font padding, and (API 28+) line
+ * height from fallback fonts. Emoji come from a fallback font whose ascent and
+ * descent differ from the default font's, so centring on `Paint.fontMetrics`
+ * would put the glyph lower than the preview does.
+ */
+private fun emojiLayout(text: String, paint: TextPaint): StaticLayout {
+    val width = kotlin.math.ceil(Layout.getDesiredWidth(text, paint)).toInt().coerceAtLeast(1)
+    return StaticLayout.Builder.obtain(text, 0, text.length, paint, width)
+        .setAlignment(Layout.Alignment.ALIGN_NORMAL)
+        .setIncludePad(false)
+        .apply {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) setUseLineSpacingFromFallbacks(true)
+        }
+        .build()
 }
