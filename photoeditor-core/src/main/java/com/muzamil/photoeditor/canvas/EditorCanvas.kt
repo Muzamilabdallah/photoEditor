@@ -84,6 +84,10 @@ internal fun EditorCanvas(
     }
     fun screenToRatio(screenOffset: Offset): Offset = cropGeometry.screenToRatio(screenOffset)
 
+    // While drawing, elements ignore touches so a stroke can start anywhere,
+    // including on top of an element.
+    val elementsInteractive = currentTool != EditorTool.Drawing
+
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -172,9 +176,8 @@ internal fun EditorCanvas(
                                 onUpdate = { rx, ry, rot, sc ->
                                     onUpdateElement(element.id, rx, ry, rot, sc)
                                 },
-                                onTap = {
-                                    if (currentTool != EditorTool.Drawing) onElementTap(element.id)
-                                },
+                                onTap = { onElementTap(element.id) },
+                                interactive = elementsInteractive,
                                 onSelectedBoundsChanged = onSelectedBoundsChanged,
                                 onInteractionChanged = onInteractionChanged,
                             ) { selected -> TextElementContent(element, selected) }
@@ -188,9 +191,8 @@ internal fun EditorCanvas(
                                 onUpdate = { rx, ry, rot, sc ->
                                     onUpdateElement(element.id, rx, ry, rot, sc)
                                 },
-                                onTap = {
-                                    if (currentTool != EditorTool.Drawing) onElementTap(element.id)
-                                },
+                                onTap = { onElementTap(element.id) },
+                                interactive = elementsInteractive,
                                 onSelectedBoundsChanged = onSelectedBoundsChanged,
                                 onInteractionChanged = onInteractionChanged,
                             ) { selected -> EmojiElementContent(element, selected) }
@@ -204,9 +206,8 @@ internal fun EditorCanvas(
                                 onUpdate = { rx, ry, rot, sc ->
                                     onUpdateElement(element.id, rx, ry, rot, sc)
                                 },
-                                onTap = {
-                                    if (currentTool != EditorTool.Drawing) onElementTap(element.id)
-                                },
+                                onTap = { onElementTap(element.id) },
+                                interactive = elementsInteractive,
                                 onSelectedBoundsChanged = onSelectedBoundsChanged,
                                 onInteractionChanged = onInteractionChanged,
                             ) { selected ->
