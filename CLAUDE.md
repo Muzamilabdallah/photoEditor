@@ -45,13 +45,13 @@ State is owned by `PhotoEditorState` (core, `state/PhotoEditorState.kt`), a plai
 
 ### Element model (core, `domain/EditElement.kt`)
 
-`EditElement` is sealed: `Text`, `Emoji`, `Drawing`, `Shape`. **Every coordinate is stored as a ratio in `0f..1f`** relative to the source bitmap:
+`EditElement` is sealed: `Text`, `Emoji`, `Drawing`, `Shape`. Coordinates are ratios in `0f..1f`, but **not all in the same space** (known issue; unifying on bitmap space is planned for 0.2.0):
 
-- `Text`/`Emoji`/`Shape` — `offsetRatioX`/`offsetRatioY` (the element's center).
-- `Drawing.points` — each `Offset` is `(x, y)` in ratio space.
-- `Shape.widthRatio`/`heightRatio` — bounding box as a fraction of bitmap dimensions.
+- `Drawing.points` — each `Offset` is `(x, y)` as a fraction of the **source bitmap** (mapped via `CropGeometry`).
+- `Text`/`Emoji`/`Shape` — `offsetRatioX`/`offsetRatioY` (the element's center) as a fraction of the **preview container**.
+- `Shape.widthRatio`/`heightRatio` — bounding box as a fraction of the **preview container**.
 
-This invariant lets the same coordinates render correctly at any Compose canvas size and again at the bitmap's native resolution during export. Stroke widths for `Drawing` and `Shape` are stored in **bitmap-space pixels** (not ratios) — preview multiplies by `scaleFactor` to render, export uses them raw.
+The exporter reconciles the two spaces using the live `containerSize` (see `ImageExporter`'s header comment). Stroke widths for `Drawing` and `Shape` are stored in **bitmap-space pixels** (not ratios); text/emoji sizes are in `sp`.
 
 ### Rendering paths (two places, must stay in sync)
 

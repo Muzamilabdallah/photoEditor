@@ -29,7 +29,6 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntSize
 import com.muzamil.photoeditor.domain.EditElement
 import com.muzamil.photoeditor.domain.EditorState
@@ -60,7 +59,6 @@ internal fun EditorCanvas(
     onInteractionChanged: (Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val density = LocalDensity.current
     var canvasSize by remember { mutableStateOf(Size.Zero) }
     var containerSize by remember { mutableStateOf(IntSize.Zero) }
 
@@ -71,12 +69,6 @@ internal fun EditorCanvas(
             if (scaleX == 0f || scaleY == 0f) 1f else minOf(scaleX, scaleY)
         } ?: 1f
     }
-
-    // Publish scaleFactor so the ViewModel can hand it to the exporter — text and
-    // emoji sizes are stored in sp and need this to convert to bitmap-pixels.
-//    LaunchedEffect(scaleFactor) {
-//        onScaleFactorChanged(scaleFactor)
-//    }
 
     // The image is displayed with ContentScale.Crop; CropGeometry is the single
     // source of truth for the screen↔ratio mapping, shared by pointer input and
@@ -94,7 +86,7 @@ internal fun EditorCanvas(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(Color.Black) // or remove background entirely
+            .background(Color.Black)
             .clipToBounds()
             .onSizeChanged {
                 canvasSize = Size(it.width.toFloat(), it.height.toFloat())
@@ -107,19 +99,14 @@ internal fun EditorCanvas(
                 .fillMaxSize()
                 .onSizeChanged {
                     containerSize = it
-                    onContainerSizeChanged(
-                        IntSize(
-                            it.width,
-                            it.height
-                        )
-                    )  // ← was: compute scale and call onScaleFactorChanged
+                    onContainerSizeChanged(it)
                 }
         ) {
             bitmap?.let {
                 Image(
                     bitmap = it.asImageBitmap(),
                     contentDescription = null,
-                    contentScale = ContentScale.Crop, // ← was Fit
+                    contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize()
                 )
             }

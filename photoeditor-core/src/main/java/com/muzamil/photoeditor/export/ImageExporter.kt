@@ -173,8 +173,8 @@ suspend fun Context.saveEditedImage(
 
                     // widthRatio / heightRatio are fractions of the *visible* container area,
                     // not the full bitmap — use visibleBitmapW/H to match what the preview shows.
-                    val halfW = (element.widthRatio  * visibleBitmapW) / 2f   // ← was bitmapW
-                    val halfH = (element.heightRatio * visibleBitmapH) / 2f   // ← was bitmapH
+                    val halfW = (element.widthRatio  * visibleBitmapW) / 2f
+                    val halfH = (element.heightRatio * visibleBitmapH) / 2f
 
                     val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                         color       = element.color.toArgb()
