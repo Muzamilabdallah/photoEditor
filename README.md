@@ -100,7 +100,7 @@ PhotoEditor(
 )
 ```
 
-`decodeEditableBitmap` (in `com.muzamil.photoeditor.image`, part of core) produces the software, size-capped bitmap the editor requires — always use it (or equivalent) when loading from a uri; hardware bitmaps crash the exporter.
+`decodeEditableBitmap` (in `com.muzamil.photoeditor.image`, part of core) produces a size-capped bitmap (≤4096px on its longest edge) — use it when loading from a uri so huge camera originals don't run out of memory. Any bitmap works with `loadImage`, hardware ones included (they're copied to software on load). Loading a *different* image clears the current edits and undo history; loading into an empty editor (e.g. after process-death restore) keeps the restored edits. Pass `keepEdits` to override.
 
 `PhotoEditor` lays out its own top bar and bottom tool nav and consumes the matching window insets, so give it the whole window rather than nesting it in another `Scaffold`'s content slot. The editing surface is the band between those two bars — nothing can be drawn or dragged behind them — and the tool sheets float over the bottom of it without blocking the canvas, fading out of the way while a gesture is in flight.
 

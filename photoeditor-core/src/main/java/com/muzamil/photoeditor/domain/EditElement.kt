@@ -131,8 +131,10 @@ data class EditorState(
     val textSizeRatio: Float = EditElement.DefaultTextSizeRatio,
     /** The Shape tool's pending style: what the next added shape looks like. */
     val shapeTool: ShapeToolState = ShapeToolState(),
+    /** True while [PhotoEditorState.saveEditedImage] is rendering and writing. */
     val isLoading: Boolean = false,
-    val error: String? = null
+    /** Why the last [PhotoEditorState.saveEditedImage] failed, until cleared. */
+    val error: EditorError? = null
 )
 
 sealed class EditorTool {
@@ -146,6 +148,13 @@ sealed class EditorTool {
      */
     data object Shape : EditorTool()
 }
+
+/**
+ * Text wraps onto a new line once it is wider than this fraction of the
+ * image's width — in the preview and in the export alike, so line breaks
+ * never depend on the screen.
+ */
+internal const val TextWrapWidthRatio = 0.9f
 
 /** The length all element sizes are relative to: the shorter side, in the same units as [width]/[height]. */
 internal fun sizeUnit(width: Float, height: Float): Float = minOf(width, height)

@@ -31,7 +31,7 @@ import com.muzamil.photoeditor.state.rememberPhotoEditorState
  *
  * Load an image with [PhotoEditorState.loadImage]; decode it with
  * [com.muzamil.photoeditor.image.decodeEditableBitmap] first if it comes from
- * a uri — the editor requires a software bitmap. For the batteries-included
+ * a uri — it caps the size so huge originals don't run out of memory. For the batteries-included
  * editor (theme, toolbar, tool panels), add the `photoeditor-ui-default`
  * artifact and use its `PhotoEditor` composable instead.
  *

@@ -24,6 +24,7 @@ android {
 
     defaultConfig {
         minSdk = 24
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         consumerProguardFiles("consumer-rules.pro")
     }
 
@@ -45,6 +46,10 @@ android {
     }
     buildFeatures {
         compose = true
+    }
+
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
     }
 
     publishing {
@@ -100,4 +105,12 @@ dependencies {
     implementation(libs.androidx.compose.ui.unit)
 
     testImplementation(libs.junit)
+    // Exporter pixel tests run renderEdits on the JVM with Robolectric's
+    // native graphics (real Skia), so they check actual drawn pixels.
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.test.core)
+
+    // On-device checks for what Robolectric can't do (hardware bitmaps).
+    androidTestImplementation(libs.androidx.junit)
+    androidTestImplementation(libs.androidx.test.runner)
 }

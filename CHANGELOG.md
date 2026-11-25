@@ -34,6 +34,15 @@ new minor version. Saved editor state from 0.1.x is discarded on restore
   it used to ignore it.
 
 ### Added
+- **Suspend export API on `PhotoEditorState`** that returns a `Result` instead
+  of setting UI state: `export(context, destination, format): Result<Uri>`,
+  `exportTo(stream, format)` (e.g. for uploads, no file), and
+  `renderBitmap()`. Cancelling the caller cancels the export (cancellation
+  is never reported as a failure).
+- `ExportFormat` (`Jpeg(quality)`, `Png`, `Webp(quality, lossless)`), using
+  the non-deprecated WebP encoders on API 30+.
+- Typed errors: `EditorError` (`NoImage`, `OutOfMemory`, `ExportFailed(cause)`),
+  carried by `EditorException` in failed results; `clearError()`.
 - `renderEdits(bitmap, elements)`: renders an edit without any UI, e.g. in a
   `Worker` or a test.
 - Undo/redo now records moves, rotations, scales and style changes; one
@@ -41,10 +50,28 @@ new minor version. Saved editor state from 0.1.x is discarded on restore
   for custom continuous controls.
 
 ### Fixed
+- **Multi-line text is exported** (it used to be drawn as one line), and
+  long text wraps at 90% of the image width in both the preview and the file.
+  Lines are centred; Arabic and other right-to-left text lays out RTL; font
+  weights are exact on API 28+.
+- `loadImage` with a different image no longer keeps the previous photo's
+  overlays and undo history. Loading into an empty editor (process-death
+  restore) still keeps the restored edits; `keepEdits` overrides either way.
+- Hardware bitmaps are accepted everywhere: `loadImage` copies them to
+  software, and the exporter was verified on a device not to crash on them
+  (the old warning was out of date).
 - Strokes drawn over a text/emoji/shape show over it on screen, as in the export.
 - New elements never reuse a `zIndex` after a delete.
 - Saved emoji sit at the same height as on screen.
 - In Draw mode a stroke can start on top of an element instead of dragging it.
+
+### Changed (export)
+- `PhotoEditorState.saveEditedImage(context, destination, format)` takes an
+  `ExportFormat` instead of `quality` + `Bitmap.CompressFormat`, and
+  `EditorState.error` is an `EditorError` instead of an English string.
+- `Context.saveEditedImage(...)` takes `destination, format: ExportFormat`,
+  returns the saved `Uri` and throws on failure.
+- The library no longer writes to Logcat.
 
 ### Removed
 - `Context.saveEditedImage`'s `containerSize` parameter, and the

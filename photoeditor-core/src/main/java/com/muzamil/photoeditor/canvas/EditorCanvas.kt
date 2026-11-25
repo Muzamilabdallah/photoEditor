@@ -176,7 +176,7 @@ internal fun EditorCanvas(
                             interactive = elementsInteractive,
                             onSelectedBoundsChanged = reportBounds,
                             onInteractionChanged = onInteractionChanged,
-                        ) { selected -> TextElementContent(element, selected, sizeUnitPx) }
+                        ) { selected -> TextElementContent(element, selected, sizeUnitPx, imageSize.width) }
 
                         is EditElement.Emoji -> DraggableElement(
                             element = element,

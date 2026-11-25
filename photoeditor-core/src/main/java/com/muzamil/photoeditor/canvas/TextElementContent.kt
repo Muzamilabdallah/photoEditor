@@ -2,6 +2,7 @@ package com.muzamil.photoeditor.canvas
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
@@ -10,10 +11,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.Hyphens
+import androidx.compose.ui.text.style.LineBreak
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.muzamil.photoeditor.domain.EditElement
+import com.muzamil.photoeditor.domain.TextWrapWidthRatio
 
 // BasicText (not material3.Text): core must stay free of material3 so Mode A
 // consumers don't inherit it.
@@ -27,8 +32,12 @@ internal fun TextElementContent(
     element: EditElement.Text,
     isSelected: Boolean,
     sizeUnitPx: Float,
+    imageWidthPx: Int,
     modifier: Modifier = Modifier
 ) {
+    val density = LocalDensity.current
+    // Wrap where the exporter wraps: TextWrapWidthRatio of the image width.
+    val maxWidth = with(density) { (imageWidthPx * TextWrapWidthRatio).toDp() }
     PixelSizedText(textSizePx = element.fontSizeRatio * sizeUnitPx) { fontSize ->
         BasicText(
             text = element.text,
@@ -36,8 +45,14 @@ internal fun TextElementContent(
                 color = element.color,
                 fontSize = fontSize,
                 fontWeight = element.fontWeight,
+                // Must match textLayout() in ImageExporter line for line.
+                textAlign = TextAlign.Center,
+                lineBreak = LineBreak.Simple,
+                hyphens = Hyphens.None,
             ),
-            modifier = modifier.selectionBackdrop(isSelected)
+            modifier = modifier
+                .selectionBackdrop(isSelected)
+                .widthIn(max = maxWidth)
         )
     }
 }
